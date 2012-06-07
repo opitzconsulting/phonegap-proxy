@@ -1,0 +1,74 @@
+// Javascript to be loaded by the client application using cordova.
+
+<%- originalScript %>
+<%- partial('partials/promise.js') %>
+<%- partial('partials/socket.io.client.js') %>
+
+var socket = io.connect('http://<%= ip %>:<%= port %>');
+deactivateRemoteConsole();
+instrumentCordovaExecWithRemoteCall();
+
+copyDeviceFieldsAndFireReady();
+
+/* eval an expression in the browser that loaded the cordova-server.js.
+   For callbacks, use "promise.resolve" and "promise.reject" for success / error callbacks. 
+*/
+function evalOnServer(expression) {
+  var res = Promise();
+  socket.emit('remoteEval', expression, function(response) {
+    if (!response.success) {
+      res.reject.apply(this, response.args);
+    } else {
+      res.resolve.apply(this, response.args);
+    }
+  });
+  return res;
+}
+
+function instrumentCordovaExecWithRemoteCall() {
+	cordova.define.remove("cordova/exec");
+	cordova.define("cordova/exec", function(require, exports, module) {
+		module.exports = function(successCallback, errorCallback) {
+			var args = Array.prototype.slice.call(arguments);
+			args.splice(0,2);
+			var expression = JSON.stringify(args);
+			expression = 'cordova.require("cordova/exec")(promise.resolve, promise.reject, '+expression.substring(1, expression.length-1)+')';
+			evalOnServer(expression).then(function(data) {
+				if (successCallback) {
+					successCallback(data);
+				}
+			}, function(error) {
+				if (errorCallback) {
+					errorCallback(error);
+				}
+			});
+
+		};
+	});
+}
+
+function deactivateRemoteConsole() {
+	var consoleModuleId = cordova.require("cordova/platform").objects.console.path;
+	cordova.define.remove(consoleModuleId);
+	cordova.define(consoleModuleId, function(require, exports, module) {
+		module.exports = window.console;
+	});
+}
+
+function copyDeviceFieldsAndFireReady() {
+	var localDevice = cordova.require(cordova.require("cordova/platform").objects.device.path);
+	evalOnServer('cordova.require(cordova.require("cordova/platform").objects.device.path)')
+		.then(function(remoteDevice) { 
+		for (var x in remoteDevice) {
+			localDevice[x] = remoteDevice[x];
+		}
+		fireDeviceReady();
+	 });
+}
+
+function fireDeviceReady() {
+	var channel = cordova.require('cordova/channel');
+    channel.onCordovaInfoReady.fire();
+	channel.onNativeReady.fire();
+}
+
