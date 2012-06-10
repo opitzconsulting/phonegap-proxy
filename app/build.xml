@@ -1,0 +1,50 @@
+<project>
+
+	<target name="default">
+		<path id="rhino-classpath">
+		    <pathelement path="${basedir}/js.jar"/>
+		</path>
+
+		<delete dir="target"/>
+		<mkdir dir="target"/>
+
+		<script language="javascript" classpathref="rhino-classpath">
+			// <![CDATA[
+			function load(fileName, exports) {
+				eval(''+org.apache.tools.ant.util.FileUtils.readFully(new java.io.FileReader(fileName)));	
+				for (var i=0; i<exports.length; i++) {
+					this[exports[i]] = eval(exports[i]);
+				}
+			}
+
+			load("build/json2.js", ["JSON"]);
+			load("build/util.js", ["exec", "log", "readFileSync", "mkdirs"]);
+			load("build/phonegap-api.js", ["getApp", "saveApp", "getBuildStatus", "download"]);
+
+			var appData = {
+				username: "tobias.bosch@web.de",
+				password: "adobe4tobi",
+				title: "Phonegap Proxy",
+				version: "0.1.0",
+				sourceFile: "src/index.html",
+				targetDir: "target",
+				keys: {}
+			}
+
+			// saveApp(appData);
+			var status;
+			do {
+				status = getBuildStatus(appData);
+				log("Waiting for build. Status: "+JSON.stringify(status.platforms));
+				if (status.pending) {
+					Thread.sleep(1000);
+				}
+			} while (status.pending);
+			log("Finished building");
+			download(appData);
+
+			// ]]>
+		</script>	
+	</target>	
+
+</project>
