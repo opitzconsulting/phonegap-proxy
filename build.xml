@@ -1,0 +1,61 @@
+<project name="PhoneGap-Proxy" default="choose">
+	<property name="appdownloadDir" value="${basedir}/server/static/appdownload"/>
+	<property name="appSourceDir" value="app"/>
+
+	<target name="init">
+		<property name="buildDir" value="target"/>
+		<delete dir="${buildDir}"/>
+		<mkdir dir="${buildDir}"/>
+	</target>	
+
+	<target name="choose">
+		<echo>Please specify a target</echo>
+	</target>	
+
+	<target name="build-app" depends="init" description="builds the app and saves the result into ${appdownloadDir}">
+		<input addproperty="username" message="PhoneGap Build Username"/>
+		<input addproperty="password" message="PhoneGap Build Password"/>
+		<input addproperty="signkey" message="PhoneGap Build Signkey name"/>
+
+		<property name="sourceZip" value="${buildDir}/source.zip"/>
+		<zip destfile="${buildDir}/source.zip" basedir="${appSourceDir}"/>
+
+		<script language="javascript">
+			// <![CDATA[
+			function load(fileName, exports) {
+				eval(''+org.apache.tools.ant.util.FileUtils.readFully(new java.io.FileReader(fileName)));	
+				for (var i=0; i<exports.length; i++) {
+					this[exports[i]] = eval(exports[i]);
+				}
+			}
+
+			load("build/json2.js", ["JSON"]);
+			load("build/util.js", ["exec", "log", "readFileSync", "mkdirs"]);
+			load("build/phonegap-api.js", ["getApp", "saveApp", "waitForBuild", "download", "readAppTitleFromConfigXml"]);
+
+			var config = {
+				username: username,
+				password: password,
+				title: readAppTitleFromConfigXml(appSourceDir),
+				sourceFile: sourceZip,
+				targetDir: appdownloadDir,
+				signkey: signkey
+			}
+
+			saveApp(config);
+			waitForBuild(config);
+			log("Finished building");
+
+			download(config);
+			// ]]>
+		</script>	
+	</target>	
+
+	<target name="run-server" description="runs the server">
+		<exec executable="node" dir="server">
+			<arg value="server.js"/>
+		</exec>	
+	</target>	
+
+
+</project>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+    <widget xmlns = "http://www.w3.org/ns/widgets"
+        xmlns:gap = "http://phonegap.com/ns/1.0"
+        id        = "com.opitzconsulting.phonegapproxy"
+        version   = "1.0.0">
+
+    <name>PhoneGap-Proxy</name>
+
+    <description>
+        This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) in a desktop browser using all the native features of cordova, like camera access, ...
+    </description>
+
+    <author href="https://build.phonegap.com" email="tobias.bosch@opitz-consulting.com">
+        Tobias Bosch
+    </author>
+
+    <access origin="*" subdomains="true" />
+
+</widget>

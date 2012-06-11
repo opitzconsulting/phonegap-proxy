@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phonegap Proxy</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=0"/>
+
+    <script src="app/lib/socket.io.client.js" type="text/javascript"></script>
+    <script src="cordova.js" type="text/javascript"></script>
+    <link rel="stylesheet" href="app/lib/jquery.mobile.css"/>
+    <script src="app/lib/jquery.js"></script>
+    <script src="app/lib/jquery.mobile.js"></script>
+    <script src="app/app.js"></script>
+</head>
+<body>
+<div data-role="page" id="start">
+    <div data-role="content">
+		<div data-role="fieldcontain">
+			<label for="server">Server</label>
+		    <input type="text" id="server" value=""/>
+		</div>	
+		<div data-role="fieldcontain">
+			<label for="channel">Channel</label>
+		    <input type="text" id="channel" value=""/>
+		</div>	
+		<div data-role="fieldcontain">
+			<label for="connected">Connect</label>
+			<input type="checkbox" id="connected">
+		</div>	
+    </div>
+</body>
+
+</html>

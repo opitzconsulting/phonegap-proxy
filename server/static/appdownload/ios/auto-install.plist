@@ -11,17 +11,17 @@
 					<key>kind</key>
 					<string>software-package</string>
 					<key>url</key>
-					<string>http://s3.amazonaws.com/ios.phonegap/slicehost-production/apps/134753/PhonegapProxy.ipa</string>
+					<string>http://s3.amazonaws.com/ios.phonegap/slicehost-production/apps/136989/PhoneGapProxy.ipa</string>
 				</dict>
 			</array>
 			<key>metadata</key>
 			<dict>
 				<key>bundle-identifier</key>
-				<string>com.phonegap.www</string>
+				<string>com.opitzconsulting.phonegapproxy</string>
 				<key>kind</key>
 				<string>software</string>
 				<key>title</key>
-				<string>Phonegap Proxy</string>
+				<string>PhoneGap-Proxy</string>
 			</dict>
 		</dict>
 	</array>
