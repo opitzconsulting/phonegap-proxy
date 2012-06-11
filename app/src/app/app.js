@@ -76,12 +76,21 @@ function getRemoteFile(url, callback) {
     xhr.send();
 }
 
+var originalScript;
+getRemoteFile('cordova.js', function(result) {
+	originalScript = result;
+});
+
 var socket;
 function connect() {
 	socket = io.connect(server);
 
 	socket.on("connect", function() {
-	    socket.emit("device", channel);
+	    socket.emit("device", {
+	    	channel: channel,
+	    	originalScript: originalScript,
+	    	device: window.device
+	    });
 	});
 
 	function createCallback(name, fn) {

@@ -42,9 +42,14 @@
 			} while (status.pending);
 			log("Finished building");
 			download(appData);
-
 			// ]]>
 		</script>	
+
+		<property name="appdowloadDir" value="../server/static/appdownload"/>
+		<delete dir="appdowloadDir"/>
+		<mkdirs dir="appdowloadDir"/>
+		<copy todir="${appdownloadDir}" dir="target"/>
 	</target>	
+
 
 </project>

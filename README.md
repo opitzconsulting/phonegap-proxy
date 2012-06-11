@@ -3,14 +3,14 @@ Cordova Proxy
 
 Description
 -------------
-This proxy allows the development of a HTML5 app with cordova (PhoneGap) in a desktop browser using all the native features of cordova, like camera access, ...
-The html5 app will run in a desktop browser, but all native cordova features will be executed on a real mobile device, without simulation.
+This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) in a desktop browser using all the native features of cordova, like camera access, ... The html5 app will run in a desktop browser, but all native cordova features will be executed on a real mobile device, without simulation.
 
 This allows fast roundtrips during development, as well as real access to the hardware.
 
 
 Quick Start
 -------------
+
 
 1. Run the server: `node server.js`
 2. Create a new cordova project, as described here: [http://docs.phonegap.com/en/1.8.0/guide_getting-started_index.md.html](http://docs.phonegap.com/en/1.8.0/guide_getting-started_index.md.html)

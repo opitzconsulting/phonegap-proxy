@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<link href="css/bootstrap.css" rel="stylesheet">
+	<link href="css/bootstrap-responsive.css" rel="stylesheet">
+</head>	
+<body>
+
+<div class="navbar navbar-fixed-top">
+
+</div>	
+
+<div class="container-fluid">
+<h1>PhoneGap Proxy</h1>
+<p>
+This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) in a desktop browser using all the native features of cordova, like camera access, ... The html5 app will run in a desktop browser, but all native cordova features will be executed on a real mobile device, without simulation.
+</p>
+
+<h2>Registered devices</h2>
+<table class="table table-striped">
+<thead>
+	<tr>
+		<th>Channel</th><th>Device name</th>
+	</th>	
+</thead>
+<tbody>
+<% for (var channel in devices) { var device = devices[channel]; %>
+	<tr>
+		<td><%= channel %></td><td><%= device.device.name %></td>
+	</tr>	
+
+<% } %>
+</tbody>
+</table>
+
+<h2>App Downloads</h2>
+<div class="btn-group">
+<% for (var platform in downloads) { var download = downloads[platform]; %>
+		<a class="btn" href="<%= download %>"><%= platform %></a>
+
+<% } %>
+</div>
+
+</div>
+
+</body>
+</html>
