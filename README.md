@@ -12,6 +12,10 @@ Why?
 ---------
 When I started developing with PhoneGap, I realized that the development cycles between change and run are long: After a change, you have to build the project and redeploy it on the device. This is in contrast to developing a HTML5 app, where you change a file, refresh your browser and see the result. As long as a project does not use native features, PhoneGap apps may be developed just like web apps. But as soon as native features are used, the problem occurs. PhoneGap-Proxy tries to solve this problem.
 
+License: 
+------------
+Copyright 2011, Tobias Bosch (OPITZ CONSULTING GmbH)
+Licensed under the MIT license.
 
 Quick Start
 -------------
@@ -59,7 +63,5 @@ Dependencies:
 - ejs
 - PhoneGap Build
 
-License: 
-------------
-MIT License
+
 
