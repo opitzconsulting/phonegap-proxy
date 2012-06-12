@@ -28,6 +28,12 @@ function readFileSync(fileName) {
 	return ''+org.apache.tools.ant.util.FileUtils.readFully(new java.io.FileReader(fileName));
 }
 
+function writeFileSync(fileName, content) {
+	var writer = new java.io.FileWriter(fileName);
+	writer.write(content);
+	writer.close();
+}
+
 function mkdirs(fileName) {
 	new File(fileName).mkdirs();
 }

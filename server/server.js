@@ -15,6 +15,7 @@ app.configure('development', function(){
 });
 app.register('.js', require('ejs'));
 app.register('.html', require('ejs'));
+app.register('.plist', require('ejs'));
 
 app.set('view engine', 'ejs');
 app.set('view options', {
@@ -22,17 +23,15 @@ app.set('view options', {
 });
 
 var port = 8080;
-
 app.listen(port);
+console.log("listening on port "+port);
 
 // -------------------
 // Views
 app.get('/:channel/cordova.js', function(req, res, next) {
   var channel = req.params.channel;
   var device = devices[channel];
-  console.log("channel "+channel+" device: "+device);
   if (!device) {
-    console.log("no device for channel "+channel);
     res.header('Error', "No device for channel "+channel);
     res.send(500);
     return;
@@ -44,30 +43,47 @@ app.get('/:channel/cordova.js', function(req, res, next) {
   });      
 });
 
-function downloads() {
-  var platformFilters = {
-    ios: /\.plist/,
-    blackberry: /\.jad/
+function filterList(list, pattern) {
+    for (var j=0; j<list.length; j++) {
+      if (pattern.test(list[j])) {
+        return list[j];
+      }
+    }      
+    return;
+}
+
+function downloads(req) {
+
+  var downloadHandlers = {
+    ios: function(baseLink, files) {
+      return 'itms-services://?action=download-manifest&url='+baseLink+'install.plist';
+    },
+    blackberry: function(baseLink, files) {
+      var jad = filterList(files, /\.jad/);
+      return baseLink+jad;
+    }
   };
+
 
   var result = {};
   var baseDir = './static/appdownload';
   var platforms = fs.readdirSync(baseDir);
-  var platform, files, filter, file;
+  var platform, files, link;
+  var baseLink;
+  
+  var address = req.connection.address();
+  var handler;
   for (var i=0; i<platforms.length; i++) {
     platform = platforms[i];
     files = fs.readdirSync(baseDir+'/'+platform);
-    filter = platformFilters[platform];
-    file = files[0];
-    if (filter) {
-      for (var j=0; j<files.length; j++) {
-        if (filter.test(files[j])) {
-          file = files[j];
-          break;
-        }
-      }      
+    handler = downloadHandlers[platform];
+    baseLink = "http://"+address.address+":"+address.port+'/appdownload/'+platform+'/';
+    if (handler) {
+      link = handler(baseLink, files);
+    } else {
+      link = baseLink+files[0];
     }
-    result[platform] = 'appdownload/'+platform+'/'+file;
+    result[platform] = link;
   }
   return result;
 }
@@ -75,7 +91,15 @@ function downloads() {
 app.get('/', function(req, res) {
   res.render('index.html', {
     devices: devices,
-    downloads: downloads()
+    address: req.connection.address(),
+    downloads: downloads(req)
+  });
+});
+
+app.get('/appdownload/ios/install.plist', function(req, res) {
+  var address = req.connection.address();
+  res.render('appdownload/ios/install.plist', {
+    ipaFolder: 'http://'+address.address+':'+address.port+'/appdownload/ios'
   });
 });
 
@@ -109,7 +133,9 @@ io.sockets.on('connection', function (socket) {
       fn({callback: 'error', args: ['Could not find socket for channel '+channel]});
       return;
     }
+    console.log("starting eval on device");
     deviceSocket.emit('evalOnDevice', expression, function(response) {
+      console.log("end eval on device");
       fn(response);
     });
   });  

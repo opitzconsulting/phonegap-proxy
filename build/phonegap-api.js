@@ -107,6 +107,20 @@ function getPath(url) {
 	return url.substring(0, lastSlash);
 }
 
+function downloadFile(config, link, targetFile) {
+	var targetDir = getPath(targetFile);
+	mkdirs(targetDir);
+	log("Downloading "+link+" to "+targetFile);
+	curl("-o", targetFile, link);
+}
+
+function downloadFileWithAuth(config, link, targetFile) {
+	var targetDir = getPath(targetFile);
+	mkdirs(targetDir);
+	log("Downloading "+link+" to "+targetFile);
+	curl("-u", config.username+":"+config.password, "-o", targetFile, link);
+}
+
 function download(config) {
 	var appData = getApp(config);
 	var platforms = appData.status;
@@ -114,17 +128,14 @@ function download(config) {
 	for (var platform in platforms) {
 		if (platforms[platform]=='complete') {
 			var link = getDownloadLink(config, appData, platform);
-			targetDir = config.targetDir+"/"+platform;
-			mkdirs(targetDir);
-			var targetFile = targetDir+"/"+getFileName(link);
-			log("Downloading "+platform+" from "+link+" to "+targetFile);
-			curl("-o", targetFile, link);
+			var targetFile = config.downloadDir+"/"+platform+'/'+getFileName(link);
+			downloadFile(config, link, targetFile);
 			if (platform=="blackberry") {
 				// For blackberry: download the jad file and all linked files also
 				downloadBlackberryCodFiles(config, link, targetFile);
 			} else  if (platform=="ios") {
 				// For ios: download ios manifest for wireless installation
-				downloadIosWirelessManifest(config, appData);
+				downloadIosManifest(config, appData);
 			}
 		}
 	}
@@ -136,19 +147,25 @@ function getDownloadLink(config, appData, platform) {
 }
 
 function downloadBlackberryCodFiles(config, jadUrl, jadFileName) {
+	var targetDir = getPath(jadFileName);
 	var jadUrlPath = getPath(jadUrl);
-	var jadFilePath = getPath(jadFileName);
 	var jadContent = readFileSync(jadFileName);				
 	var jadRegex = /RIM-COD-URL-\d+: (.*)/g;
 	var match;
 	while (match = jadRegex.exec(jadContent)) {
-		var file = match[1];
-		log("Downloading additional file "+file);
-		curl("-o", jadFilePath+"/"+match[1], jadUrlPath+"/"+match[1]);
+		var fileName = match[1];
+		downloadFile(config, jadUrlPath+"/"+fileName, targetDir+"/"+fileName);
 	}
 }
 
-function downloadIosWirelessManifest(config, appData) {
-	log("Downloading iOS wireless install manifest");
-	curl("-u", config.username+":"+config.password, "-o", config.targetDir+"/ios/auto-install.plist", "https://build.phonegap.com/apps/"+appData.id+"/plist");	
+function downloadIosManifest(config, appData) {
+	var content = ''+curl("-u", config.username+":"+config.password, "https://build.phonegap.com/apps/"+appData.id+"/plist");
+	// generalize the folder for the link in the manifest to the ipa
+	var regex = /(<key>url<\/key>[^<]*<string>)([^<]*)/;
+	content = content.replace(regex, function(all, group1, group2) {		
+		return group1+'<%= ipaFolder %>/'+getFileName(group2);
+	});
+	var targetDir = config.downloadSpecialDir+"/ios";
+	mkdirs(targetDir);
+	writeFileSync(targetDir+'/install.plist', content);
 }

@@ -1,0 +1,58 @@
+<!-- This is a smaple file that should be used in the desktop browser -->
+<!DOCTYPE html>
+<html>
+<head>
+	<script type="text/javascript">
+		window.channel = window.location.hash;
+		var bangPos = channel.indexOf('!');
+		window.channel = window.channel.substring(bangPos+1);
+
+		document.write('\u003Cscript src="'+channel+'/cordova.js" type="text/javascript">\u003C/script>');
+	</script>
+</head>
+<body>
+	<h1 id="title"></h1>
+	<div id="details">
+
+	</div>
+
+	<button onclick="takePicture()">Take a picture</button>
+	<img id="image"></img>
+
+
+    <script>
+ 	var title = document.getElementById("title");
+ 	var details = document.getElementById("details");
+    var image = document.getElementById('image');
+
+    if (!window.cordova) {
+     	title.innerHTML = 'No device connected for channel '+window.channel;
+     }
+
+
+    function deviceReady() {
+     	title.innerHTML = 'Hello World from '+window.device.name;
+
+     	details.innerHTML = JSON.stringify(window.device);
+    }
+
+    document.addEventListener("deviceready", deviceReady, false);
+
+    function takePicture() {
+		navigator.camera.getPicture(onSuccess, onFail, 
+			{ destinationType : Camera.DestinationType.DATA_URL, 
+  			  sourceType : Camera.PictureSourceType.CAMERA, 
+  			  encodingType: Camera.EncodingType.JPEG }); 
+
+		function onSuccess(imageData) {
+		    image.src = "data:image/jpeg;base64," + imageData;
+		}
+
+		function onFail(message) {
+		    alert('Failed because: ' + message);
+		}
+    }
+
+    </script>
+</body>
+</html>    

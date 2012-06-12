@@ -1,5 +1,6 @@
 <project name="PhoneGap-Proxy" default="choose">
-	<property name="appdownloadDir" value="${basedir}/server/static/appdownload"/>
+	<property name="appDownloadDir" value="${basedir}/server/static/appdownload"/>
+	<property name="appDownloadSpecialDir" value="${basedir}/server/views/appdownload"/>
 	<property name="appSourceDir" value="app"/>
 
 	<target name="init">
@@ -12,7 +13,13 @@
 		<echo>Please specify a target</echo>
 	</target>	
 
-	<target name="build-app" depends="init" description="builds the app and saves the result into ${appdownloadDir}">
+	<target name="build-app" depends="init" description="builds the app and saves the result into the server">
+		<delete dir="${appDownloadDir}"/>
+		<mkdir dir="${appDownloadDir}"/>
+		
+		<delete dir="${appDownloadSpecialDir}"/>
+		<mkdir dir="${appDownloadSpecialDir}"/>
+
 		<input addproperty="username" message="PhoneGap Build Username"/>
 		<input addproperty="password" message="PhoneGap Build Password"/>
 		<input addproperty="signkey" message="PhoneGap Build Signkey name"/>
@@ -30,7 +37,7 @@
 			}
 
 			load("build/json2.js", ["JSON"]);
-			load("build/util.js", ["exec", "log", "readFileSync", "mkdirs"]);
+			load("build/util.js", ["exec", "log", "readFileSync", "writeFileSync", "mkdirs"]);
 			load("build/phonegap-api.js", ["getApp", "saveApp", "waitForBuild", "download", "readAppTitleFromConfigXml"]);
 
 			var config = {
@@ -38,11 +45,12 @@
 				password: password,
 				title: readAppTitleFromConfigXml(appSourceDir),
 				sourceFile: sourceZip,
-				targetDir: appdownloadDir,
+				downloadDir: appDownloadDir,
+				downloadSpecialDir: appDownloadSpecialDir,
 				signkey: signkey
 			}
 
-			saveApp(config);
+			// saveApp(config);
 			waitForBuild(config);
 			log("Finished building");
 

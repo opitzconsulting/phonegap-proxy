@@ -5,6 +5,7 @@
 
 var channel = '<%= channel %>';
 var socket = io.connect();
+deactivateAndroidCallbacks();
 deactivateRemoteConsole();
 instrumentCordovaExecWithRemoteCall();
 
@@ -42,8 +43,44 @@ function instrumentCordovaExecWithRemoteCall() {
 	});
 }
 
+function deactivateAndroidCallbacks() {
+	var platform = cordova.require("cordova/platform");
+	var cordovaObjects = platform.objects.cordova;
+	if (!cordovaObjects) {
+		return;
+	}	
+	var cordovaObjects = cordovaObjects.children;
+	if (cordovaObjects.JSCallback) {
+		cordova.define.remove(cordovaObjects.JSCallback.path);
+		cordova.define(cordovaObjects.JSCallback.path, function(require, exports, module) {
+			module.exports = function() {
+			}
+		});
+	}
+	if (cordovaObjects.JSCallbackPolling) {
+		cordova.define.remove(cordovaObjects.JSCallbackPolling.path);
+		cordova.define(cordovaObjects.JSCallbackPolling.path, function(require, exports, module) {
+			module.exports = function() {
+			}
+		});
+	}	
+	// Android Phonegap uses window.prompt to communicate in synch with the device.
+	var oldPrompt = window.prompt;
+	window.prompt = function() {
+		if (arguments.length==2 && (''+arguments[1]).indexOf('gap_')===0) {
+			return;
+		}
+		return oldPrompt.apply(this, arguments);
+	};
+
+}
+
 function deactivateRemoteConsole() {
-	var consoleModuleId = cordova.require("cordova/platform").objects.console.path;
+	var platform = cordova.require("cordova/platform");
+	if (!platform.objects.console) {
+		return;
+	}
+	var consoleModuleId = platform.objects.console.path;
 	cordova.define.remove(consoleModuleId);
 	cordova.define(consoleModuleId, function(require, exports, module) {
 		module.exports = window.console;

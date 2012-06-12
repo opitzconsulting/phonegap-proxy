@@ -31,9 +31,14 @@ Got to the `app` directory.
 Execute `ant -Dusername=<user> -Dpassword=<password> -Dsignkey=<key-name>`
 
 
+Status:
+------------
+Tested on iOS 5 and Android 4.
+
+
 Dependencies:
 ---------------
-- cordova 1.7
+- cordova 1.8
 - node.js 0.6
 - express
 - socket.io express
