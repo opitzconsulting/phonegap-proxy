@@ -59,4 +59,7 @@ Dependencies:
 - ejs
 - PhoneGap Build
 
+License: 
+------------
+MIT License
 
