@@ -4,7 +4,7 @@
 <%- partial('partials/socket.io.client.js') %>
 
 var channel = '<%= channel %>';
-var socket = io.connect();
+var socket = io.connect('http://<%= address.address %>:<%=address.port %>');
 deactivateAndroidCallbacks();
 deactivateRemoteConsole();
 instrumentCordovaExecWithRemoteCall();

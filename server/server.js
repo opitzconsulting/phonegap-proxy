@@ -29,6 +29,7 @@ console.log("listening on port "+port);
 // -------------------
 // Views
 app.get('/:channel/cordova.js', function(req, res, next) {
+  var address = req.connection.address();
   var channel = req.params.channel;
   var device = devices[channel];
   if (!device) {
@@ -39,7 +40,8 @@ app.get('/:channel/cordova.js', function(req, res, next) {
   res.contentType('json');
   res.render('cordova-client', {
       originalScript : device.originalScript,
-      channel: device.channel
+      channel: device.channel,
+      address: address
   });      
 });
 

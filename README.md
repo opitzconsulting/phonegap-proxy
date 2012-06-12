@@ -11,29 +11,38 @@ The html5 app will run in a desktop browser, but all native cordova features wil
 Quick Start
 -------------
 
-1. Build the app that will run on your device using PhoneGap Build:
-  - 
+*Build the app*
 
-2. Run the server: `node server.js`;
+1. Get an account at PhoneGap Build: [https://build.phonegap.com/](https://build.phonegap.com/)
+2. Upload sign keys for your user account: [https://build.phonegap.com/people/edit#pane=signing](https://build.phonegap.com/people/edit#pane=signing)
+3. Build the app that will run on your device using PhoneGap Build:
+   `ant build-app -Dusername<username> -Dpassword=<password> -Dsignkey=<signkey-title>`
 
+*Start the server*
 
-1. Run the server: `node server.js`
-2. Create a new cordova project, as described here: [http://docs.phonegap.com/en/1.8.0/guide_getting-started_index.md.html](http://docs.phonegap.com/en/1.8.0/guide_getting-started_index.md.html)
-3. Put the file from `misc/sample-server.html` into the cordova project as `index.html`, and adjust the ip address in that file. Please also adjust the security settings, e.g. for iOS set the `ExternalHosts` in the Cordova.plist correctly.
-4. Deploy your cordova project to a native device, e.g. an iPhone.
-5. On the console where you started `node server.js` there should be the message `got a server`;
-6. Start creating a cordova html5 application in the `static` folder, starting with the file from `static/sample-client.html`, and open it in a desktop browser using the url `http://localhost:8080'. 
+`ant run-server`
 
+*Install the app on your device*
 
-Building the app
-------------------
-Got to the `app` directory.
-Execute `ant -Dusername=<user> -Dpassword=<password> -Dsignkey=<key-name>`
+1. Open the url `http://<server-ip>:8080/` in your mobile browser.
+2. Download the app for your plattform.
 
+*Start the app on your device*
 
-Status:
-------------
-Tested on iOS 5 and Android 4.
+1. Enter the url of the server: `http://<server-ip>:8080/`
+2. Enter a channel name. Channels are used to allow multiple devices to be used on the same server.
+
+*Check the access from the desktop browser*
+
+1. go to `http://<server-ip>:8080/`
+2. Select a device and click on the `Demo` link. On the new page you should see
+   details about the connected device and should be able to take a picture.
+
+*Build your own phonegap app*
+
+1. include the cordova.js with the url listed on `http://<server-ip>:8080/`, e.g.
+   `<script src="http://someUrl:8080/someChannel/cordova.js">`
+2. develop everything as usual! 
 
 
 Dependencies:
@@ -43,5 +52,6 @@ Dependencies:
 - express
 - socket.io express
 - ejs
+- PhoneGap Build
 
 
