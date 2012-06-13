@@ -25,11 +25,11 @@ Quick Start
 1. Get an account at PhoneGap Build: [https://build.phonegap.com/](https://build.phonegap.com/)
 2. Upload sign keys for your user account: [https://build.phonegap.com/people/edit#pane=signing](https://build.phonegap.com/people/edit#pane=signing)
 3. Build the app that will run on your device using PhoneGap Build:
-   `ant build-app -Dusername<username> -Dpassword=<password> -Dsignkey=<signkey-title>`
+   `ant buildApp -Dusername<username> -Dpassword=<password> -Dsignkey=<signkey-title>`
 
 *Start the server*
 
-`ant run-server`
+`ant runServer`
 
 *Install the app on your device*
 

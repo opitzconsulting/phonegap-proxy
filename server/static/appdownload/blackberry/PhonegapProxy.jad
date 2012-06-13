@@ -1,19 +1,19 @@
-RIM-COD-SHA1-9: 40 d0 83 92 6d 77 61 33 51 2e 2f 03 95 b7 79 d0 87 ad 8b d4
-RIM-COD-SHA1-8: 04 0b 5e 48 46 19 76 e8 dc 96 81 92 b8 88 99 ad 6e a2 2f b0
+RIM-COD-SHA1-9: 0a 5a 9d b1 cb f4 5e 4a 03 98 46 45 8a 48 82 b5 ea 0a a9 7b
+RIM-COD-SHA1-8: 86 5e 7b 63 3f a2 d5 49 c9 8b bb d6 d8 d9 a1 ae 35 21 62 1d
 RIM-COD-Size-29: 50328
-RIM-COD-SHA1-7: dc 93 b3 ec 87 1a dd a8 c7 19 02 12 8d 33 8d 3f 0d 3d b1 dd
+RIM-COD-SHA1-7: b3 2d e3 be 9a 20 fe e1 77 8e b8 e8 c2 2e 20 27 b1 5f e0 14
 RIM-COD-Size-28: 50324
-RIM-COD-SHA1-6: 6b 12 a9 8b 2f 0d e9 54 9f 22 a6 68 c3 da 38 a7 b8 3a 41 d2
+RIM-COD-SHA1-6: 01 af cb 7b dd 0c 34 f7 8c 4c 9c df 6c bb b5 8a db 76 21 48
 RIM-COD-Size-27: 57608
-RIM-COD-SHA1-5: bd 22 c7 86 74 22 29 4b 5e 13 da d2 1c c3 c2 b1 f2 61 fc 80
+RIM-COD-SHA1-5: 47 6d 57 1a 69 90 bf a0 85 d3 94 54 29 f7 b0 00 05 b3 a7 96
 RIM-COD-Size-26: 50344
-RIM-COD-SHA1-4: be 13 09 b9 df ca cc 1a c5 1a d4 d5 cf af 9f e4 f0 6c 30 a3
+RIM-COD-SHA1-4: 5c 45 2d 8e 05 36 e6 04 0d f4 71 5e 99 71 b1 94 e7 c9 67 f3
 RIM-COD-Size-25: 50332
-RIM-COD-SHA1-3: 5c ec 60 63 81 72 8f 28 1d fb 20 09 4c 32 34 88 ea 53 d1 1a
+RIM-COD-SHA1-3: c3 72 0b 6e e7 80 b5 e4 9f cc 4f 92 bb 45 40 b2 8e 64 19 ca
 RIM-COD-Size-24: 46532
-RIM-COD-SHA1-2: 40 21 6a 7c 6f e6 fc d0 67 61 c6 ed 26 d4 61 2b 03 9f 51 69
+RIM-COD-SHA1-2: 3b f9 ff a5 71 96 be bb 32 87 60 9e 97 73 81 7a d7 e6 f0 5f
 RIM-COD-Size-23: 24656
-RIM-COD-SHA1-1: 9b 92 3f 7b f2 6c ac cd e9 aa 84 df 9a 04 ed f6 3e 56 4c 9a
+RIM-COD-SHA1-1: 31 5e 2b 57 30 84 da ee 06 c0 e6 84 75 69 15 e8 44 39 2c f5
 RIM-COD-Size-22: 50676
 RIM-COD-Size-21: 51604
 RIM-COD-Size-20: 50684
@@ -42,51 +42,51 @@ RIM-COD-Size-16: 50684
 RIM-COD-Size-15: 43628
 RIM-COD-Size-14: 53204
 RIM-COD-Size-13: 50588
-RIM-COD-SHA1-30: 27 2f 0b b9 40 43 6f 8b 17 ed c1 9e cd 46 ca ff 28 aa 2a a9
+RIM-COD-SHA1-30: 4f 96 8e 8d 32 b1 ad 69 d1 f3 81 7d f3 32 dd 47 b5 37 82 21
 RIM-COD-Size-12: 50588
 RIM-COD-Size-11: 50588
 RIM-COD-Size-10: 62832
 MIDlet-Version: 1.0.0
 MicroEdition-Profile: MIDP-2.0
-RIM-COD-SHA1-29: dc ca 4e ac 1a f6 f2 aa 15 60 fd 55 86 8f 83 60 34 5a a3 f4
-RIM-COD-SHA1-28: 18 11 40 d4 6e c7 a4 93 33 0a 9b 76 83 14 d7 91 55 04 25 7b
-RIM-COD-SHA1-27: 9e 8a 3c 54 86 98 f2 28 74 30 9a 46 89 5b b1 c5 52 82 29 21
-RIM-COD-SHA1-26: 62 f3 bd 61 11 af 4d 3f e5 d5 7b da a3 d1 0a 15 ab ff bc 8a
-RIM-COD-SHA1-25: f8 93 0d 47 29 d0 cc 83 c0 5b 4f 06 18 47 1c b5 bf 92 19 7a
-RIM-COD-SHA1-24: 7a f7 56 b6 d7 1c 51 14 aa 63 cc 13 0b 94 15 47 d5 d6 78 82
-RIM-COD-SHA1-23: 59 79 14 17 34 2d 73 ab 82 40 3c ca b0 a5 d1 75 44 f0 21 e3
-RIM-COD-SHA1-22: 18 cc 8e 64 f6 00 a2 47 8d 26 11 cb 97 8d 61 36 5a 36 2c 75
-RIM-COD-SHA1-21: e6 9e 4d f6 a1 e4 b1 4e 58 96 9a 4e 02 c4 a2 ae 51 6d 55 df
-RIM-COD-SHA1-20: 08 ea 5c 64 34 97 71 55 fe 52 cb 5a 52 72 e9 c1 60 f9 11 21
+RIM-COD-SHA1-29: 26 ad 69 80 57 aa ab 61 14 2d a0 25 b1 35 87 b4 df 4d 1e 65
+RIM-COD-SHA1-28: 89 64 fd 53 7e 64 37 45 94 c6 01 1e 2e c1 fa ca e0 e7 45 f9
+RIM-COD-SHA1-27: a0 e2 e7 83 1a 98 63 89 e3 11 e5 f7 88 56 a2 22 c0 15 5b 73
+RIM-COD-SHA1-26: 7d e9 4a 60 68 53 7a dd 99 4a d5 24 bd 3e 58 d6 c5 cc 3f 45
+RIM-COD-SHA1-25: 2a 17 79 23 3b 2a 48 81 f0 2b 2e ce 7f 5e 1d b4 19 69 06 68
+RIM-COD-SHA1-24: 72 14 81 43 84 ec 32 df 7e cb 38 ce b5 0c 29 64 1b 16 88 96
+RIM-COD-SHA1-23: c5 22 be 71 65 55 14 c5 fa ab 0e 91 fa d1 a8 6b 35 51 9c f8
+RIM-COD-SHA1-22: 32 69 a2 b5 63 c0 1e 5b 05 aa 5a bc e8 80 c3 96 4a 57 00 f9
+RIM-COD-SHA1-21: d5 04 3b 64 08 da e7 47 a7 22 ff 2e c3 4c 1a 36 a7 83 ac 9a
+RIM-COD-SHA1-20: a3 d4 b6 c5 4e 39 11 35 5b a9 3d 58 89 cd 46 b4 8a 0b dc 5d
 RIM-COD-URL: PhoneGapProxy.cod
-RIM-COD-Creation-Time: 1339500527
+RIM-COD-Creation-Time: 1339593755
 MicroEdition-Configuration: CLDC-1.1
 MIDlet-Jar-URL: PhoneGapProxy.jar
-RIM-COD-SHA1-19: 21 5a cc 20 a2 07 cf a4 ed 5f 9a da 2f 4b 7c 03 59 cc e1 bd
-RIM-COD-SHA1-18: 6e 8f b7 c4 6c a3 88 c5 d3 f5 5b 84 fc 37 26 9c e5 59 26 12
-RIM-COD-SHA1-17: 63 bc e5 67 b2 31 99 04 70 e8 34 2d 66 a0 ca 5e f8 32 28 13
-RIM-COD-SHA1-16: f1 a7 f0 93 dd 03 60 b9 65 ce 71 ac 72 33 da b1 cd c4 50 af
-RIM-COD-SHA1-15: b1 25 8c 03 ca b8 1f 4e 86 30 ae 3e a5 83 2d 42 cb c4 c9 36
-RIM-COD-SHA1-14: 1e cb 01 f9 46 23 64 65 71 d7 7e f8 6e b5 fb 78 98 5c 26 6d
-RIM-COD-SHA1-13: 78 f7 58 07 d6 2f 27 8a 78 32 92 bf 9a 9d ab 15 eb 38 d2 b6
-RIM-COD-SHA1-12: 1c e6 00 03 03 9d 27 67 65 f3 a2 53 d1 65 26 69 14 40 ca 33
+RIM-COD-SHA1-19: 78 92 b7 04 39 78 d7 57 8f 55 f1 b9 2b 81 59 66 fc 33 65 5a
+RIM-COD-SHA1-18: 20 91 d8 6c 8c e5 60 fa 04 8b 8e 23 d9 a7 fc 6f ca 40 da a5
+RIM-COD-SHA1-17: 05 1e 04 44 11 ae 4d 1a b7 3b 3f f7 33 f6 69 2c 8c 21 9e 56
+RIM-COD-SHA1-16: da 62 98 d5 4b fa 0f f1 c9 b3 b1 34 a9 1d f8 1f 60 b5 25 8d
+RIM-COD-SHA1-15: 3d ea 38 2e fc 5c 00 49 99 0a d2 94 86 90 fe e6 84 c0 70 67
+RIM-COD-SHA1-14: 0f 9d e3 8b 54 ba 62 a9 68 70 7a 59 77 f1 ec 6a d2 47 1f 4e
+RIM-COD-SHA1-13: c6 69 e8 c5 76 94 02 e8 89 f0 10 7a cc 6e dd 3f d4 a5 d6 cf
+RIM-COD-SHA1-12: 80 16 15 8f 50 4f 82 8f 68 82 d9 e2 b2 24 f6 63 98 2e d6 1e
 RIM-COD-Size-9: 62356
-RIM-COD-SHA1-11: 23 ea 6e 14 5d 3e 86 21 81 9a 23 80 4e 2e 33 da f9 aa 67 3d
+RIM-COD-SHA1-11: 8d a1 73 54 92 28 80 12 2f 61 5b 34 fa 49 49 e3 fe b5 09 96
 RIM-COD-Size-8: 65004
-RIM-COD-SHA1-10: 00 2f 09 62 9f 1d d3 f4 6c f3 e0 86 82 2c db 25 a5 98 a6 aa
+RIM-COD-SHA1-10: 38 e3 2d d0 3f 48 d0 2e f6 66 50 77 18 c5 5e b4 50 5a ea 9a
 RIM-COD-Size-7: 66772
 MIDlet-Description: This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) in a desktop browser using all the native features of cordova, like camera access, ...
 RIM-COD-Size-6: 68908
 RIM-COD-Size-5: 62792
 RIM-COD-Size-4: 65196
 RIM-COD-Size-3: 65048
-RIM-COD-Size-2: 73640
+RIM-COD-Size-2: 73644
 RIM-COD-Size-1: 71180
 MIDlet-1: PhoneGap-Proxy,resources/icon.png,rim:foreground;WIDGET;
 MIDlet-Name: PhoneGap-Proxy
-RIM-COD-SHA1: 76 a9 d4 bb 00 61 2d 76 1a 69 dc b6 f4 e9 66 59 78 20 a8 97
+RIM-COD-SHA1: 7d 69 91 14 d7 de 78 56 39 77 4f e5 26 97 b8 6d 79 79 8c 28
 RIM-COD-Module-Dependencies: net_rim_cldc,net_rim_bb_web_jse_api,net_rim_xml_org,net_rim_bb_browser_field2_api,net_rim_os,net_rim_bbapi_phone,net_rim_bbapi_mailv2,net_rim_bbapi_push,net_rim_bbapi_messagelist,net_rim_pdap,net_rim_bbapi_invoke,net_rim_bbapi_browser,net_rim_networkapi,net_rim_bb_browser_field_api,net_rim_xml,net_rim_locationapi
-MIDlet-Jar-Size: 1624712
+MIDlet-Jar-Size: 1624713
 RIM-COD-URL-30: PhoneGapProxy-30.cod
 RIM-COD-URL-9: PhoneGapProxy-9.cod
 RIM-COD-URL-8: PhoneGapProxy-8.cod

@@ -1,6 +1,6 @@
 <project name="PhoneGap-Proxy" default="choose">
+	
 	<property name="appDownloadDir" value="${basedir}/server/static/appdownload"/>
-	<property name="appDownloadSpecialDir" value="${basedir}/server/views/appdownload"/>
 	<property name="appSourceDir" value="app"/>
 
 	<target name="init">
@@ -13,53 +13,198 @@
 		<echo>Please specify a target</echo>
 	</target>	
 
-	<target name="build-app" depends="init" description="builds the app and saves the result into the server">
+	<target name="initApp" depends="init">
 		<delete dir="${appDownloadDir}"/>
 		<mkdir dir="${appDownloadDir}"/>
 		
-		<delete dir="${appDownloadSpecialDir}"/>
-		<mkdir dir="${appDownloadSpecialDir}"/>
-
 		<input addproperty="username" message="PhoneGap Build Username"/>
 		<input addproperty="password" message="PhoneGap Build Password"/>
 		<input addproperty="signkey" message="PhoneGap Build Signkey name"/>
 
-		<property name="sourceZip" value="${buildDir}/source.zip"/>
-		<zip destfile="${buildDir}/source.zip" basedir="${appSourceDir}"/>
-
+		<loadfile srcfile="${appSourceDir}/config.xml" property="configXml"/>
 		<script language="javascript">
 			// <![CDATA[
-			function load(fileName, exports) {
-				eval(''+org.apache.tools.ant.util.FileUtils.readFully(new java.io.FileReader(fileName)));	
-				for (var i=0; i<exports.length; i++) {
-					this[exports[i]] = eval(exports[i]);
-				}
-			}
-
-			load("build/json2.js", ["JSON"]);
-			load("build/util.js", ["exec", "log", "readFileSync", "writeFileSync", "mkdirs"]);
-			load("build/phonegap-api.js", ["getApp", "saveApp", "waitForBuild", "download", "readAppTitleFromConfigXml"]);
-
-			var config = {
-				username: username,
-				password: password,
-				title: readAppTitleFromConfigXml(appSourceDir),
-				sourceFile: sourceZip,
-				downloadDir: appDownloadDir,
-				downloadSpecialDir: appDownloadSpecialDir,
-				signkey: signkey
-			}
-
-			// saveApp(config);
-			waitForBuild(config);
-			log("Finished building");
-
-			download(config);
+			project.setProperty("appTitle", configXml.match(/<name>([^<]+)/)[1]);
 			// ]]>
-		</script>	
+		</script>
+		<echo>App title: ${appTitle}</echo>
 	</target>	
 
-	<target name="run-server" description="runs the server">
+	<target name="getAppInfo" depends="initApp">
+		<local name="curlOutput"/>
+		<exec executable="curl" outputproperty="curlOutput" logError="true">
+		    <arg line="-u ${username}:${password} https://build.phonegap.com/api/v1/apps"/>
+		</exec>
+		<script language="javascript">
+			// <![CDATA[
+			var apps = eval("apps="+project.getProperty("curlOutput")).apps;
+			var foundApp;
+			for (var i=0; i<apps.length; i++) {
+				app = apps[i];
+				if (app.title==appTitle) {
+					foundApp = app;
+					break;
+				}
+			}
+			if (foundApp) {
+				project.setProperty("appId", app.id);
+				var statusList = [];
+				for (var platform in app.status) {
+					var status = app.status[platform];
+					statusList.push('"'+platform+'":"'+status+'"');
+				}
+				project.setProperty("appStatus", statusList.join(","));
+			} else {
+				project.setProperty("appStatus", "error");
+			}
+			// ]]>
+		</script>
+		<echo>App id ${appId} status ${appStatus}</echo>
+	</target>
+
+	<target name="getUserInfo" depends="initApp">
+		<local name="curlOutput"/>
+		<exec executable="curl" outputproperty="curlOutput" logError="true">
+		    <arg line="-u ${username}:${password} https://build.phonegap.com/api/v1/me"/>
+		</exec>
+		<script language="javascript">
+			// <![CDATA[
+			var keys = eval("keys="+project.getProperty("curlOutput")).keys;
+			var result = [];
+			for (var platform in keys) {
+				var keyList = keys[platform].all;
+				if (keyList) {
+					for (var i=0; i<keyList.length; i++) {
+						var key = keyList[i];
+						if (key.title==signkey) {
+							result.push('"'+platform+'":"'+key.id+'"');
+							break;
+						}
+					}
+				}
+			}
+			project.setProperty("appKeys", "{"+result.join(",")+"}");
+			// ]]>
+		</script>
+		<echo>Found app keys: ${appKeys}</echo>	
+	</target>	
+
+	<target name="waitForBuild" depends="initApp">
+		<waitfor maxwait="30" maxwaitunit="second">
+			<scriptcondition language="javascript">
+				getAppInfo.execute();
+				var appStatus = project.getProperty("appStatus");
+				self.setValue(appStatus.indexOf('pending')==-1);
+			</scriptcondition>	
+		</waitfor>
+	</target>
+
+	<target name="createApp" depends="getAppInfo, getUserInfo" unless="appId">
+		<local name="curlOutput"/>
+		<zip destfile="${buildDir}/source.zip" basedir="${appSourceDir}"/>
+		<exec executable="curl" outputproperty="curlOutput" logError="true">
+		    <arg line="-u ${username}:${password} -F file=@${buildDir}/source.zip -F data={'create_method':'file', 'keys':${appKeys},'title':'${appTitle}'} https://build.phonegap.com/api/v1/apps"/>
+		</exec>    
+		<echo>App created</echo>   
+	</target>	
+
+	<target name="updateApp" depends="getAppInfo, getUserInfo" if="appId">
+		<property name="sourceZip" value="${buildDir}/source.zip"/>
+		<zip destfile="${buildDir}/source.zip" basedir="${appSourceDir}"/>
+		<local name="curlOutput"/>
+		<exec executable="curl" outputproperty="curlOutput" logError="true">
+		    <arg line="-u ${username}:${password} -X PUT -F file=@${buildDir}/source.zip -F data='{&quot;create_method&quot;:&quot;file&quot;,&quot;keys&quot;:${appKeys},&quot;title&quot;:&quot;${appTitle}&quot;}' https://build.phonegap.com/api/v1/apps/${appId}"/>
+		</exec> 
+		<echo>App updated</echo>   
+	</target>
+	
+	<macrodef name="downloadForPlatform">
+	   	<attribute name="platform"/>
+	   	<sequential>
+			<local name="curlOutput"/>
+			<local name="downloadLink"/>
+			<exec executable="curl" outputproperty="curlOutput" logError="true">
+			    <arg line="-u ${username}:${password} https://build.phonegap.com/apps/${appId}/download/@{platform}"/>
+			</exec>
+			<script language="javascript">
+				project.setProperty("downloadLink", project.getProperty("curlOutput").match(/href="([^"]+)/)[1]);
+			</script>	
+			<downloadUrl targetDir="${appDownloadDir}/@{platform}" sourceurl="${downloadLink}"/>
+			<echo file="${appDownloadDir}/@{platform}/sourceUrl" message="${downloadLink}"/>
+	   	</sequential>
+	</macrodef>
+
+	<macrodef name="downloadUrl">
+	   	<attribute name="targetDir"/>
+	   	<attribute name="sourceUrl"/>
+	   	<sequential>
+			<echo>Downloading @{sourceUrl} to @{targetDir}</echo>
+			<mkdir dir="@{targetDir}"/>
+			<local name="curlArgs"/>
+			<script language="javascript">
+				var curlArgs = '-O '+'@{sourceUrl}'.split(' ').join(' -O ');
+				project.setProperty('curlArgs', curlArgs);
+			</script>	
+			<exec executable="curl" dir="@{targetDir}">
+			    <arg line="${curlArgs}"/>
+			</exec>			   		
+	   	</sequential>
+	</macrodef>
+
+	<target name="downloadIos" depends="getAppInfo">
+		<downloadForPlatform platform="ios"/>
+	</target>	
+
+	<target name="downloadAndroid" depends="getAppInfo">
+		<downloadForPlatform platform="android"/>
+	</target>
+
+	<target name="downloadBlackberry" depends="getAppInfo">
+		<downloadForPlatform platform="blackberry"/>
+
+		<property name="bbDir" value="${appDownloadDir}/blackberry"/>
+		<local name="jadContent"/>
+		<loadresource property="jadContent">
+			<fileset dir="${bbDir}" includes="*.jad"/>
+		</loadresource>	
+		<local name="downloadLink"/>
+		<loadfile srcFile="${bbDir}/sourceUrl" property="downloadLink"/>
+		<script language="javascript">
+			// <![CDATA[
+			var jadUrlPath = project.getProperty('downloadLink');
+			var lastSlash = jadUrlPath.lastIndexOf('/');
+			jadUrlPath = jadUrlPath.substring(0, lastSlash);
+
+			var match;
+			var jadContent = ''+project.getProperty("jadContent");
+			var codUrls = [];
+			var jadRegex = /RIM-COD-URL-\d+: (.*)/g;
+			while (match = jadRegex.exec(jadContent)) {
+				codUrls.push(jadUrlPath+'/'+match[1]);
+			}
+			project.setProperty("codUrls", codUrls.join(" "));
+			// ]]>		
+		</script>
+		<downloadUrl targetDir="${bbDir}" sourceUrl="${codUrls}"/>
+	</target>	
+
+	<target name="downloadWebos" depends="getAppInfo">
+		<downloadForPlatform platform="webos"/>
+	</target>
+	
+	<target name="downloadSymbian" depends="getAppInfo">
+		<downloadForPlatform platform="symbian"/>
+	</target>
+	
+	<target name="downloadWinphone" depends="getAppInfo">
+		<downloadForPlatform platform="winphone"/>
+	</target>
+	
+	<target name="downloadApp" depends="downloadBlackberry, downloadAndroid, downloadWinphone, downloadSymbian, downloadWebos, downloadIos"/>
+		
+	<target name="buildApp" depends="createApp, updateApp, waitForBuild, downloadApp"/>
+
+	<target name="runServer" description="runs the server">
 		<exec executable="node" dir="server">
 			<arg value="server.js"/>
 		</exec>	
