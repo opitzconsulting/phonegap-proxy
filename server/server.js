@@ -27,23 +27,52 @@ app.listen(port);
 console.log("listening on port "+port);
 
 // -------------------
-// Views
+// Routes
 app.get('/:channel/cordova.js', function(req, res, next) {
   var address = req.connection.address();
   var channel = req.params.channel;
   var device = devices[channel];
   if (!device) {
     res.header('Error', "No device for channel "+channel);
-    res.send(500);
+    res.send('data', 500);
     return;
   }
   res.contentType('json');
   res.render('cordova-client', {
-      originalScript : device.originalScript,
       channel: device.channel,
       address: address
   });      
 });
+
+app.options('/:channel/clientRequest', function(req, res, next) {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.send(200);
+});
+
+
+app.post('/:channel/clientRequest', function(req, res, next) {
+  res.header('Access-Control-Allow-Origin', '*');
+  var channel = req.params.channel;
+  var device = devices[channel];
+  // TODO: send error via content, not via header. HOW?
+  if (!device) {
+    next(new Error("No device for channel "+channel));
+    return;
+  }
+  device.socket.emit('clientRequest', req.body, function(response) {
+    if (response.error) {
+      // TODO send error without wrapping into ERROR object.
+      next(new Error(response.data));
+    } else {
+      res.send(JSON.stringify(response.data));
+    }
+  });
+});
+
+
+
 
 function filterList(list, pattern) {
     for (var j=0; j<list.length; j++) {
@@ -110,8 +139,6 @@ app.get('/appdownload/ios/install.plist', function(req, res) {
 // Socket-IO
 // ------------------
 var devices = {};
-
-var deviceSockets = {};
 
 io.sockets.on('connection', function (socket) {
   socket.on("device", function(deviceData) {

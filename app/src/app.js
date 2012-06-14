@@ -57,6 +57,8 @@ $(function() {
 function getErrorMessage(e) {
 	if (e.stack) {
 		return e.stack;
+	} else if (e.message) {
+		return e.message;
 	} else if (e.name) {
 		return e.name;
 	} else {
@@ -76,11 +78,6 @@ function getRemoteFile(url, callback) {
     xhr.send();
 }
 
-var originalScript;
-getRemoteFile('cordova.js', function(result) {
-	originalScript = result;
-});
-
 var socket;
 function connect() {
 	socket = io.connect(server);
@@ -88,45 +85,45 @@ function connect() {
 	socket.on("connect", function() {
 	    socket.emit("device", {
 	    	channel: channel,
-	    	originalScript: originalScript,
 	    	device: window.device
 	    });
 	});
 
-	function createCallback(name, fn) {
+	function generateCallback(callbackId) {
 		return function() {
-	    			fn({
-	    				callback: name,
-	    				args: Array.prototype.slice.call(arguments)
-	    			});
-	        	};	
+			socket.emit("callback", channel, callbackId, Array.prototype.slice.call(arguments))
+		}
 	}
 
-	socket.on('evalOnDevice', function (expression, fn) {
+	function generateCallbacks(args) {
+		if (!args) {
+			return;
+		}
+		var i, arg;
+		for (i=0; i<args.length; i++) {
+			arg = args[i];
+			if (arg && arg.callbackId) {
+				args[i] = generateCallback(arg.callbackId);
+			}
+		}
+	}
+
+	socket.on('clientRequest', function (request, callback) {
 	    try {
-	        var callback = {};
-	        var hasCallbacks = false;
-	        // create necessary callbacks from the expression,
-	        // so they cal be used in the eval statement
-	        var match;
-	        var regex = /callback\.(\w+)/g;
-	        while (match = regex.exec(expression)) {
-	        	hasCallbacks = true;
-	        	callback[match[1]] = createCallback(match[1], fn);
-	        }
-	        var res = eval(expression);
-	        if (!hasCallbacks) {
-			    fn({
-			    	callback: "success",
-			    	args: [res]
-			    });
-	        }
+	    	var globalObj = eval('globalObj = '+request.remoteFn.globalObjExpr);
+	    	var fn = globalObj[request.remoteFn.fnName];
+	    	generateCallbacks(request.args);
+	    	var result = fn.apply(globalObj, request.args);
+	    	callback({
+	    		error: false,
+	    		data: result
+	    	});
 	    } catch (e) {
+	        console.log(e);
 	        var errMsg = getErrorMessage(e);
-	        console.log("Error evaluating expression "+expression,errMsg);
-		    fn({
-		    	callback: "error",
-		    	args: [errMsg]
+		    callback({
+		    	error: true,
+		    	data: errMsg
 		    });
 	    }
 	});
