@@ -8,6 +8,8 @@
   <link rel="stylesheet" type="text/css" href="jasmine/jasmine.css">
   <script type="text/javascript" src="jasmine/jasmine.js"></script>
   <script type="text/javascript" src="jasmine/jasmine-html.js"></script>
+  <script type="text/javascript" src="cordova-proxy/cordova.proxy.js"></script>
+  <script type="text/javascript" src="socketio.mock.js"></script>
 
   <script src="jqm/jquery.js"></script>
   <script>
@@ -27,7 +29,7 @@
 </head>
 <body>
   <script type="text/javascript">
-    (function() {
+    function run() {
       var jasmineEnv = jasmine.getEnv();
       // jasmineEnv.updateInterval = 1000;
 
@@ -40,7 +42,8 @@
 
       jasmineEnv.execute();
 
-    })();
+    }
+    window.addEventListener('load', run, false);
 
   </script>
 

@@ -44,35 +44,6 @@ app.get('/:channel/cordova.js', function(req, res, next) {
   });      
 });
 
-app.options('/:channel/clientRequest', function(req, res, next) {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  res.send(200);
-});
-
-
-app.post('/:channel/clientRequest', function(req, res, next) {
-  res.header('Access-Control-Allow-Origin', '*');
-  var channel = req.params.channel;
-  var device = devices[channel];
-  // TODO: send error via content, not via header. HOW?
-  if (!device) {
-    next(new Error("No device for channel "+channel));
-    return;
-  }
-  device.socket.emit('clientRequest', req.body, function(response) {
-    if (response.error) {
-      // TODO send error without wrapping into ERROR object.
-      next(new Error(response.data));
-    } else {
-      res.send(JSON.stringify(response.data));
-    }
-  });
-});
-
-
-
 
 function filterList(list, pattern) {
     for (var j=0; j<list.length; j++) {
@@ -139,33 +110,48 @@ app.get('/appdownload/ios/install.plist', function(req, res) {
 // Socket-IO
 // ------------------
 var devices = {};
+var clients = {};
 
 io.sockets.on('connection', function (socket) {
-  socket.on("device", function(deviceData) {
-    console.log("new device: "+JSON.stringify({channel: deviceData.channel, device: deviceData.device}));
+  socket.on("device", function(channel, deviceData) {
+    console.log("new device on channel "+channel+':'+JSON.stringify(deviceData));
+    deviceData.channel = channel;
     deviceData.socket = socket;
-    devices[deviceData.channel] = deviceData;
-    socket.device = deviceData;
-  });
+    devices[channel] = deviceData;
 
-  socket.on("disconnect", function() {
-    if (socket.device) {
-      console.log("removed device for channel "+socket.device.channel);
-      delete devices[socket.device.channel];
-    }
-  });
-
-  // forward calls from the client
-  socket.on('evalOnDevice', function (channel, expression, fn) {
-    var deviceSocket = devices[channel] && devices[channel].socket;
-    if (!deviceSocket) {
-      fn({callback: 'error', args: ['Could not find socket for channel '+channel]});
-      return;
-    }
-    console.log("starting eval on device");
-    deviceSocket.emit('evalOnDevice', expression, function(response) {
-      console.log("end eval on device");
-      fn(response);
+    socket.on("disconnect", function() {
+      console.log("removed device for channel "+channel);
+      delete devices[channel];
     });
-  });  
+
+    socket.on("callback", function(response) {
+      var clientSocket = clients[channel];
+      if (!clientSocket) {
+        console.log("could not find client for channel "+channel);
+        return;
+      };
+      clientSocket.emit("callback", response);
+    });
+  });
+
+  socket.on("client", function(channel) {
+    console.log("new client on channel "+channel);
+    clients[channel] = socket;
+
+    socket.on("disconnect", function() {
+      console.log("removed client for channel "+channel);
+      delete clients[channel];
+    });
+
+    socket.on('exec', function (command) {
+      var deviceSocket = devices[channel] && devices[channel].socket;
+      if (!deviceSocket) {
+        console.log("could not find device for channel "+channel);
+        return;
+      }
+      deviceSocket.emit('exec', command);
+    });
+
+  });
+
 });

@@ -2,6 +2,6 @@
 
 <%- partial('partials/cordova-proxy/cordova.proxy.js') %>
 
-cordova.require('cordova/plugin/proxy/device').connect('http://<%= address.address %>:<%= address.port %>', '<%= channel %>');
+cordova.require('cordova/exec').connect('http://<%= address.address %>:<%= address.port %>', '<%= channel %>');
 
 

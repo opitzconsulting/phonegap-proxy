@@ -1,6 +1,6 @@
-// commit b9dcff46715b3d17a05f8724d0623e4af2dd8c7e
+// commit f8fa7c8f54c1c5401ccf325da8bd937f8225b745
 
-// File generated at :: Thu Jun 14 2012 19:50:32 GMT+0200 (CEST)
+// File generated at :: Fri Jun 15 2012 14:10:46 GMT+0200 (CEST)
 
 /*
  Licensed to the Apache Software Foundation (ASF) under one
@@ -190,7 +190,9 @@ var cordova = {
     fireDocumentEvent: function(type, data) {
         var evt = createEvent(type, data);
         if (typeof documentEventHandlers[type] != 'undefined') {
-            documentEventHandlers[type].fire(evt);
+            setTimeout(function() {
+                documentEventHandlers[type].fire(evt);
+            }, 0);
         } else {
             document.dispatchEvent(evt);
         }
@@ -198,7 +200,9 @@ var cordova = {
     fireWindowEvent: function(type, data) {
         var evt = createEvent(type,data);
         if (typeof windowEventHandlers[type] != 'undefined') {
-            windowEventHandlers[type].fire(evt);
+            setTimeout(function() {
+                windowEventHandlers[type].fire(evt);
+            }, 0);
         } else {
             window.dispatchEvent(evt);
         }
@@ -793,6 +797,9 @@ module.exports = {
         Camera:{
             path: 'cordova/plugin/CameraConstants'
         },
+        CameraPopoverOptions: {
+            path: 'cordova/plugin/CameraPopoverOptions'
+        },
         CaptureError: {
             path: 'cordova/plugin/CaptureError'
         },
@@ -926,15 +933,11 @@ define("cordova/exec", function(require, exports, module) {
 var cordova = require('cordova'),
     utils = require('cordova/utils'),
     channel = require('cordova/channel'),
-    invokeRemote = require('cordova/plugin/proxy/invokeRemote');
+    io = require('cordova/plugin/proxy/socket.io.client');
 
-module.exports = function() {
-    if (!channel.onCordovaInfoReady.fired) {
-        utils.alert("ERROR: Attempting to call cordova.exec()" +
-              " before 'deviceready'. Ignoring.");
-        return;
-    }
+var socket;
 
+function exec() {
     var successCallback, failCallback, service, action, actionArgs, splitCommand;
     var callbackId = null;
     if (typeof arguments[0] !== "string") {
@@ -957,58 +960,53 @@ module.exports = function() {
         service = splitCommand.join(".");
         actionArgs = Array.prototype.splice.call(arguments, 1);
     }
-
-    if (failCallback) {
-        failCallback.errorFor = successCallback || true;
+    // Register the callbacks and add the callbackId to the positional
+    // arguments if given.
+    if (successCallback || failCallback) {
+        callbackId = service + cordova.callbackId++;
+        cordova.callbacks[callbackId] =
+            {success:successCallback, fail:failCallback};
     }
 
-    invokeRemote.exec('Cordova.exec', successCallback, failCallback, service, action, actionArgs);
-};
+    socket.emit('exec', {
+        callbackId: callbackId,
+        service: service,
+        action: action,
+        actionArgs: actionArgs
+    });
+}
 
+
+function connect(serverAddr, channelName) {
+    socket = io.connect(serverAddr);
+    socket.emit('client', channelName);
+
+    socket.on('callback', function(response) {
+        if (response.success) {
+            cordova.callbackSuccess(response.callbackId, {status: cordova.callbackStatus.OK, message: response.message});
+        } else {
+            cordova.callbackError(response.callbackId, {message: response.message});
+        }
+    });
+    channel.onNativeReady.fire();
+}
+
+exec.connect = connect;
+
+module.exports = exec;
 });
 
 // file: lib/proxy/platform.js
 define("cordova/platform", function(require, exports, module) {
 module.exports = {
     id: "phonegap-proxy",
-    initialize:function() {
-        // iOS doesn't allow reassigning / overriding navigator.geolocation object.
-        // So clobber its methods here instead :)
-        var geo = require('cordova/plugin/geolocation');
-        if (!navigator.geolocation) {
-            navigator.geolocation = {};
-        }
-
-        navigator.geolocation.getCurrentPosition = geo.getCurrentPosition;
-        navigator.geolocation.watchPosition = geo.watchPosition;
-        navigator.geolocation.clearWatch = geo.clearWatch;
-    },
+    initialize:function() {},
     objects: {
-        File: { // exists natively, override
-            path: "cordova/plugin/File"
-        },
-        MediaError: { // exists natively, override
-            path: "cordova/plugin/MediaError"
-        },
         device: {
             path: 'cordova/plugin/proxy/device'
-        },
-        CameraPopoverOptions: {
-            path: 'cordova/plugin/proxy/CameraPopoverOptions'
         }
     },
-    merges:{
-        Entry:{
-            path: "cordova/plugin/proxy/Entry"
-        },
-        navigator:{
-            children:{
-                notification:{
-                    path:"cordova/plugin/proxy/notification"
-                }
-            }
-        }
-    }
+    merges:{}
 };
 
 });
@@ -1136,6 +1134,10 @@ cameraExport.getPicture = function(successCallback, errorCallback, options) {
     exec(successCallback, errorCallback, "Camera", "takePicture", [quality, destinationType, sourceType, targetWidth, targetHeight, encodingType, mediaType, allowEdit, correctOrientation, saveToPhotoAlbum, popoverOptions]);
 };
 
+cameraExport.cleanup = function(successCallback, errorCallback) {
+    exec(successCallback, errorCallback, "Camera", "cleanup", []);
+};
+
 module.exports = cameraExport;
 });
 
@@ -1168,6 +1170,26 @@ module.exports = {
       ARROW_ANY : 15
   }
 };
+});
+
+// file: lib/common/plugin/CameraPopoverOptions.js
+define("cordova/plugin/CameraPopoverOptions", function(require, exports, module) {
+var Camera = require('cordova/plugin/CameraConstants');
+
+/**
+ * Encapsulates options for iOS Popover image picker
+ */
+var CameraPopoverOptions = function(x,y,width,height,arrowDir){
+    // information of rectangle that popover should be anchored to
+    this.x = x || 0;
+    this.y = y || 32;
+    this.width = width || 320;
+    this.height = height || 480;
+    // The direction of the popover arrow
+    this.arrowDir = arrowDir || Camera.PopoverArrowDirection.ARROW_ANY;
+};
+
+module.exports = CameraPopoverOptions;
 });
 
 // file: lib/common/plugin/CaptureAudioOptions.js
@@ -2423,6 +2445,8 @@ var DirectoryEntry = require('cordova/plugin/DirectoryEntry');
 var FileSystem = function(name, root) {
     this.name = name || null;
     if (root) {
+        console.log('root.name ' + name);
+        console.log('root.root ' + root);
         this.root = new DirectoryEntry(root.name, root.fullPath);
     }
 };
@@ -2432,7 +2456,8 @@ module.exports = FileSystem;
 
 // file: lib/common/plugin/FileTransfer.js
 define("cordova/plugin/FileTransfer", function(require, exports, module) {
-var exec = require('cordova/exec');
+var exec = require('cordova/exec'),
+    FileTransferError = require('cordova/plugin/FileTransferError');
 
 /**
  * FileTransfer uploads a file to a remote server.
@@ -2472,7 +2497,12 @@ FileTransfer.prototype.upload = function(filePath, server, successCallback, erro
         }
     }
 
-    exec(successCallback, errorCallback, 'FileTransfer', 'upload', [filePath, server, fileKey, fileName, mimeType, params, trustAllHosts, chunkedMode]);
+    var fail = function(e) {
+        var error = new FileTransferError(e.code, e.source, e.target, e.http_status);
+        errorCallback(error);
+    };
+
+    exec(successCallback, fail, 'FileTransfer', 'upload', [filePath, server, fileKey, fileName, mimeType, params, trustAllHosts, chunkedMode]);
 };
 
 /**
@@ -2497,6 +2527,12 @@ FileTransfer.prototype.download = function(source, target, successCallback, erro
         entry.fullPath = result.fullPath;
         successCallback(entry);
     };
+
+    var fail = function(e) {
+        var error = new FileTransferError(e.code, e.source, e.target, e.http_status);
+        errorCallback(error);
+    };
+
     exec(win, errorCallback, 'FileTransfer', 'download', [source, target]);
 };
 
@@ -2510,8 +2546,11 @@ define("cordova/plugin/FileTransferError", function(require, exports, module) {
  * FileTransferError
  * @constructor
  */
-var FileTransferError = function(code) {
+var FileTransferError = function(code, source, target, status) {
     this.code = code || null;
+    this.source = source || null;
+    this.target = target || null;
+    this.http_status = status || null;
 };
 
 FileTransferError.FILE_NOT_FOUND_ERR = 1;
@@ -2519,6 +2558,7 @@ FileTransferError.INVALID_URL_ERR = 2;
 FileTransferError.CONNECTION_ERR = 3;
 
 module.exports = FileTransferError;
+
 });
 
 // file: lib/common/plugin/FileUploadOptions.js
@@ -3168,7 +3208,7 @@ var Position = function(coords, timestamp) {
     } else {
         this.coords = new Coordinates();
     }
-    this.timestamp = (timestamp !== undefined) ? timestamp : new Date().getTime();
+    this.timestamp = (timestamp !== undefined) ? timestamp : new Date();
 };
 
 module.exports = Position;
@@ -3996,7 +4036,7 @@ var geolocation = {
                     velocity:p.velocity,
                     altitudeAccuracy:p.altitudeAccuracy
                 },
-                p.timestamp || new Date()
+                (p.timestamp === undefined ? new Date() : ((p.timestamp instanceof Date) ? p.timestamp : new Date(p.timestamp)))
             );
             geolocation.lastPosition = pos;
             successCallback(pos);
@@ -4080,7 +4120,7 @@ var geolocation = {
                     velocity:p.velocity,
                     altitudeAccuracy:p.altitudeAccuracy
                 },
-                p.timestamp || new Date()
+                (p.timestamp === undefined ? new Date() : ((p.timestamp instanceof Date) ? p.timestamp : new Date(p.timestamp)))
             );
             geolocation.lastPosition = pos;
             successCallback(pos);
@@ -4459,218 +4499,68 @@ module.exports = {
 };
 });
 
-// file: lib/proxy/plugin/proxy/CameraPopoverOptions.js
-define("cordova/plugin/proxy/CameraPopoverOptions", function(require, exports, module) {
-// This module is required for IOS
-
-var Camera = require('cordova/plugin/CameraConstants');
-
-/**
- * Encapsulates options for iOS Popover image picker
- */
-var CameraPopoverOptions = function(x,y,width,height,arrowDir){
-    // information of rectangle that popover should be anchored to
-    this.x = x || 0;
-    this.y = y || 32;
-    this.width = width || 320;
-    this.height = height || 480;
-    // The direction of the popover arrow
-    this.arrowDir = arrowDir || Camera.PopoverArrowDirection.ARROW_ANY;
-};
-
-module.exports = CameraPopoverOptions;
-});
-
-// file: lib/proxy/plugin/proxy/Entry.js
-define("cordova/plugin/proxy/Entry", function(require, exports, module) {
-// This module is requried for iOS, as it needs file://localhost as prefix...
-
-var channel = require('cordova/channel'),
-    invokeRemote = require("cordova/plugin/proxy/invokeRemote");
-
-var urlPrefix = '';
-
-channel.onCordovaReady.subscribeOnce(refreshUrlPrefix);
-
-function refreshUrlPrefix() {
-    urlPrefix = invokeRemote.exec("new Media('').toURL");
-}
-
-module.exports = {
-    toURL:function() {
-        if (urlPrefix) {
-            return urlPrefix + this.fullPath;
-        }
-        return this.fullPath;
-    },
-    toURI: function() {
-        console.log("DEPRECATED: Update your code to use 'toURL'");
-        if (urlPrefix) {
-            return urlPrefix + this.fullPath;
-        }
-        return this.fullPath;
-    },
-    refreshUrlPrefix: refreshUrlPrefix
-};
-});
-
 // file: lib/proxy/plugin/proxy/device.js
 define("cordova/plugin/proxy/device", function(require, exports, module) {
+var channel = require('cordova/channel'),
+    utils = require('cordova/utils'),
+    exec = require('cordova/exec');
+
 /**
- * this represents the mobile device, and provides properties for inspecting the model, version, UUID of the
+ * This represents the mobile device, and provides properties for inspecting the model, version, UUID of the
  * phone, etc.
  * @constructor
  */
-var invokeRemote = require("cordova/plugin/proxy/invokeRemote"),
-    utils = require('cordova/utils'),
-    channel = require('cordova/channel');
+function Device() {
+    this.available = false;
+    this.platform = null;
+    this.version = null;
+    this.name = null;
+    this.uuid = null;
+    this.cordova = null;
 
-var Device = function() {
     var me = this;
-    me.available = false;
+
     channel.onCordovaReady.subscribeOnce(function() {
         me.getInfo(function(info) {
             me.available = true;
-            for (var x in info) {
-                me[x] = info[x];
-            }
+            me.platform = info.platform;
+            me.version = info.version;
+            me.name = info.name;
+            me.uuid = info.uuid;
+            me.cordova = info.cordova;
             channel.onCordovaInfoReady.fire();
         },function(e) {
             me.available = false;
             utils.alert("[ERROR] Error initializing Cordova: " + e);
         });
     });
-};
+}
 
+/**
+ * Get device info
+ *
+ * @param {Function} successCallback The function to call when the heading data is available
+ * @param {Function} errorCallback The function to call when there is an error getting the heading data. (OPTIONAL)
+ */
 Device.prototype.getInfo = function(successCallback, errorCallback) {
-    if (errorCallback) {
-        errorCallback.errorFor = successCallback || true;
-    }
-    invokeRemote.exec('device.getInfo', successCallback, errorCallback);
-};
 
-Device.prototype.connect = function(serverAddr, serverChannel) {
-    invokeRemote.init(serverAddr, serverChannel);
-    channel.onCordovaReady.fire();
+    // successCallback required
+    if (typeof successCallback !== "function") {
+        console.log("Device Error: successCallback is not a function");
+        return;
+    }
+
+    // errorCallback optional
+    if (errorCallback && (typeof errorCallback !== "function")) {
+        console.log("Device Error: errorCallback is not a function");
+        return;
+    }
+
+    // Get info
+    exec(successCallback, errorCallback, "Device", "getDeviceInfo", []);
 };
 
 module.exports = new Device();
-
-});
-
-// file: lib/proxy/plugin/proxy/invokeRemote.js
-define("cordova/plugin/proxy/invokeRemote", function(require, exports, module) {
-var io = require('cordova/plugin/proxy/socket.io.client'),
-    cordova = require('cordova');
-
-var socket;
-var serverAddr;
-var channel;
-
-// cordova supports only a single attribute.
-// However, our callback should support as many attributes as we want!
-function wrapCallback(callback) {
-    return function(message) {
-        // We always give an array as message!
-        return callback.apply(cordova, message);
-    };
-}
-
-function createCallbackId() {
-    var callbackId = 'invokeRemote' + (cordova.callbackId++);
-    cordova.callbacks[callbackId] = {};
-    return callbackId;
-}
-
-function invokeRemote(fnEvalExpr) {
-    var args = Array.prototype.slice.apply(arguments);
-    var arg, callbackId, i;
-    // first loop: Evaluate the success callbacks
-    for (i=0; i<args.length; i++) {
-        arg = args[i];
-        if (typeof arg === 'function') {
-            if (!arg.errorFor) {
-                callbackId = createCallbackId();
-                cordova.callbacks[callbackId].success = wrapCallback(arg);
-                arg.callbackId = callbackId;
-                args[i] = {
-                    callbackId: callbackId,
-                    success: true
-                };
-            }
-        }
-    }
-    // second loop: Evaluate the error callbacks
-    for (i=0; i<args.length; i++) {
-        arg = args[i];
-        if (typeof arg === 'function') {
-            if (arg.errorFor) {
-                callbackId = arg.errorFor.callbackId;
-                if (!callbackId) {
-                    callbackId = createCallbackId();
-                }
-
-                cordova.callbacks[callbackId].fail = wrapCallback(arg);
-                arg.callbackId = callbackId;
-                args[i] = {
-                    callbackId: callbackId,
-                    success: false
-                };
-            }
-        }
-    }
-
-    return syncRequest(args);
-}
-
-function syncRequest(data) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', serverAddr+'/'+channel+'/clientRequest', false);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.send(JSON.stringify(data));
-    if (xhr.status>=200 && xhr.status<300) {
-        if (xhr.responseText) {
-            return JSON.parse(xhr.responseText);
-        } else {
-            return undefined;
-        }
-    } else {
-        throw new Error(xhr.responseText);
-    }
-}
-
-function callbackReceived(callbackId, success, callbackArgs) {
-    if (success) {
-        cordova.callbackSuccess(callbackId, {status: cordova.callbackStatus.OK, message: callbackArgs});
-    } else {
-        cordova.callbackError(callbackId, {message: callbackArgs});
-    }
-}
-
-function init(_serverAddr, _channel) {
-    serverAddr = _serverAddr;
-    channel = _channel;
-    socket = io.connect(serverAddr);
-    socket.on('callback', callbackReceived);
-}
-
-module.exports = {
-    exec: invokeRemote,
-    init: init
-};
-});
-
-// file: lib/proxy/plugin/proxy/notification.js
-define("cordova/plugin/proxy/notification", function(require, exports, module) {
-// This module is required for iOS, as it does not have a beep natively.
-var invokeRemote = require('cordova/plugin/proxy/invokeRemote');
-
-module.exports = {
-    beep:function(count) {
-        // Required for iOS...
-        invokeRemote.exec('navigator.notification.beep', count);
-    }
-};
 });
 
 // file: lib/proxy/plugin/proxy/socket.io.client.js
@@ -8155,9 +8045,10 @@ utils.format = function(formatString /* ,... */) {
 utils.vformat = function(formatString, args) {
     if (formatString === null || formatString === undefined) return "";
     if (arguments.length == 1) return formatString.toString();
+    if (typeof formatString != "string") return formatString.toString();
 
     var pattern = /(.*?)%(.)(.*)/;
-    var rest    = formatString.toString();
+    var rest    = formatString;
     var result  = [];
 
     while (args.length) {
@@ -8200,13 +8091,20 @@ function UUIDcreatePart(length) {
 //------------------------------------------------------------------------------
 function formatted(object, formatChar) {
 
-    switch(formatChar) {
-        case 'j':
-        case 'o': return JSON.stringify(object);
-        case 'c': return '';
+    try {
+        switch(formatChar) {
+            case 'j':
+            case 'o': return JSON.stringify(object);
+            case 'c': return '';
+        }
+    }
+    catch (e) {
+        return "error JSON.stringify()ing argument: " + e;
     }
 
-    if (null === object) return Object.prototype.toString.call(object);
+    if ((object === null) || (object === undefined)) {
+        return Object.prototype.toString.call(object);
+    }
 
     return object.toString();
 }

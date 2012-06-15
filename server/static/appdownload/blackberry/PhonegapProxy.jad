@@ -1,22 +1,22 @@
-RIM-COD-SHA1-9: 0a 5a 9d b1 cb f4 5e 4a 03 98 46 45 8a 48 82 b5 ea 0a a9 7b
-RIM-COD-SHA1-8: 86 5e 7b 63 3f a2 d5 49 c9 8b bb d6 d8 d9 a1 ae 35 21 62 1d
+RIM-COD-SHA1-9: 60 35 2d 82 df 04 cf c1 97 b6 d1 b4 d6 e1 3c bd be a6 67 fc
+RIM-COD-SHA1-8: a4 25 73 b1 6b b9 28 56 ca 3b ed 8f fd dc aa 63 40 5f 76 ef
 RIM-COD-Size-29: 50328
-RIM-COD-SHA1-7: b3 2d e3 be 9a 20 fe e1 77 8e b8 e8 c2 2e 20 27 b1 5f e0 14
+RIM-COD-SHA1-7: 76 ee e0 89 9e a2 a1 cf f5 18 b9 37 10 bd 01 d4 b1 36 86 82
 RIM-COD-Size-28: 50324
-RIM-COD-SHA1-6: 01 af cb 7b dd 0c 34 f7 8c 4c 9c df 6c bb b5 8a db 76 21 48
+RIM-COD-SHA1-6: 26 7e 08 09 f7 b7 81 50 fe 8b 75 07 09 de 37 28 d8 1d d1 2d
 RIM-COD-Size-27: 57608
-RIM-COD-SHA1-5: 47 6d 57 1a 69 90 bf a0 85 d3 94 54 29 f7 b0 00 05 b3 a7 96
+RIM-COD-SHA1-5: 15 cb 1a e2 54 b7 2a 59 0e 28 37 82 51 7a 5d 06 cd 22 56 37
 RIM-COD-Size-26: 50344
-RIM-COD-SHA1-4: 5c 45 2d 8e 05 36 e6 04 0d f4 71 5e 99 71 b1 94 e7 c9 67 f3
+RIM-COD-SHA1-4: 76 cc b6 03 d6 25 97 3f 0a 5f 5f c4 60 e3 d0 72 28 32 76 f0
 RIM-COD-Size-25: 50332
-RIM-COD-SHA1-3: c3 72 0b 6e e7 80 b5 e4 9f cc 4f 92 bb 45 40 b2 8e 64 19 ca
+RIM-COD-SHA1-3: d5 e1 32 7d 52 18 ad e8 b8 8b ac a4 9f b8 e8 b3 e2 46 5f 82
 RIM-COD-Size-24: 46532
-RIM-COD-SHA1-2: 3b f9 ff a5 71 96 be bb 32 87 60 9e 97 73 81 7a d7 e6 f0 5f
-RIM-COD-Size-23: 24656
-RIM-COD-SHA1-1: 31 5e 2b 57 30 84 da ee 06 c0 e6 84 75 69 15 e8 44 39 2c f5
-RIM-COD-Size-22: 50676
-RIM-COD-Size-21: 51604
-RIM-COD-Size-20: 50684
+RIM-COD-SHA1-2: 9b eb 1f 54 5f 53 d8 c4 8f 0e 65 b4 e2 b2 56 25 1d 17 09 2a
+RIM-COD-Size-23: 24664
+RIM-COD-SHA1-1: 9b d2 a2 8b ad 82 84 4c d9 eb 42 36 5b 0b 64 73 b2 4a 1e 22
+RIM-COD-Size-22: 50696
+RIM-COD-Size-21: 51576
+RIM-COD-Size-20: 50660
 RIM-COD-URL-19: PhoneGapProxy-19.cod
 RIM-COD-URL-18: PhoneGapProxy-18.cod
 RIM-COD-URL-17: PhoneGapProxy-17.cod
@@ -35,58 +35,58 @@ MIDlet-Vendor: Tobias Bosch
 RIM-MIDlet-Icon-1-1: resources/icon_hover.png,focused
 Manifest-Version: 1.0
 RIM-MIDlet-Flags-1: 0
-RIM-COD-Size-19: 50680
-RIM-COD-Size-18: 50680
-RIM-COD-Size-17: 57332
-RIM-COD-Size-16: 50684
-RIM-COD-Size-15: 43628
-RIM-COD-Size-14: 53204
-RIM-COD-Size-13: 50588
-RIM-COD-SHA1-30: 4f 96 8e 8d 32 b1 ad 69 d1 f3 81 7d f3 32 dd 47 b5 37 82 21
-RIM-COD-Size-12: 50588
-RIM-COD-Size-11: 50588
-RIM-COD-Size-10: 62832
+RIM-COD-Size-19: 50656
+RIM-COD-Size-18: 50656
+RIM-COD-Size-17: 57304
+RIM-COD-Size-16: 50660
+RIM-COD-Size-15: 47256
+RIM-COD-Size-14: 53176
+RIM-COD-Size-13: 50564
+RIM-COD-SHA1-30: e5 9a 1b 2b 1b f9 c8 e2 a3 2d bc b6 1e 03 78 3a 42 cd e1 e6
+RIM-COD-Size-12: 50564
+RIM-COD-Size-11: 50564
+RIM-COD-Size-10: 59528
 MIDlet-Version: 1.0.0
 MicroEdition-Profile: MIDP-2.0
-RIM-COD-SHA1-29: 26 ad 69 80 57 aa ab 61 14 2d a0 25 b1 35 87 b4 df 4d 1e 65
-RIM-COD-SHA1-28: 89 64 fd 53 7e 64 37 45 94 c6 01 1e 2e c1 fa ca e0 e7 45 f9
-RIM-COD-SHA1-27: a0 e2 e7 83 1a 98 63 89 e3 11 e5 f7 88 56 a2 22 c0 15 5b 73
-RIM-COD-SHA1-26: 7d e9 4a 60 68 53 7a dd 99 4a d5 24 bd 3e 58 d6 c5 cc 3f 45
-RIM-COD-SHA1-25: 2a 17 79 23 3b 2a 48 81 f0 2b 2e ce 7f 5e 1d b4 19 69 06 68
-RIM-COD-SHA1-24: 72 14 81 43 84 ec 32 df 7e cb 38 ce b5 0c 29 64 1b 16 88 96
-RIM-COD-SHA1-23: c5 22 be 71 65 55 14 c5 fa ab 0e 91 fa d1 a8 6b 35 51 9c f8
-RIM-COD-SHA1-22: 32 69 a2 b5 63 c0 1e 5b 05 aa 5a bc e8 80 c3 96 4a 57 00 f9
-RIM-COD-SHA1-21: d5 04 3b 64 08 da e7 47 a7 22 ff 2e c3 4c 1a 36 a7 83 ac 9a
-RIM-COD-SHA1-20: a3 d4 b6 c5 4e 39 11 35 5b a9 3d 58 89 cd 46 b4 8a 0b dc 5d
+RIM-COD-SHA1-29: 96 b0 8a cf c6 27 48 23 f2 f6 5f 69 87 b0 9b 23 8b c2 89 cf
+RIM-COD-SHA1-28: 9a 82 b1 9a 4a 2c d9 b1 7d 34 1b c7 6c ce e4 2f 6b 19 d9 01
+RIM-COD-SHA1-27: 9e f2 fc 8b e9 a6 ec 1b 79 eb 11 47 99 ee 44 18 6c 65 5f a3
+RIM-COD-SHA1-26: 01 b4 45 cb ad 30 57 94 02 a8 af a5 e8 ed 5e ed 70 90 62 04
+RIM-COD-SHA1-25: 05 11 38 1f 5c fe f1 be 67 f7 85 69 56 2d 27 bb 6a fa cb 8e
+RIM-COD-SHA1-24: 3e ac 0b c8 d4 1f 80 f3 67 7f 44 e8 9e 8a 78 5d 33 93 63 fc
+RIM-COD-SHA1-23: d5 3e cc 0f 32 57 79 4a 15 6c 58 49 b9 d7 18 22 10 b8 81 ec
+RIM-COD-SHA1-22: dd 69 c3 a3 8e 51 a8 4b 5b 14 7f 9f 68 68 86 ef 00 cb 06 ac
+RIM-COD-SHA1-21: 1a e6 b6 81 36 b6 93 ce 3c f6 92 d6 ea 62 81 a8 01 bc c4 7d
+RIM-COD-SHA1-20: b2 3a 0b 7a 13 05 b9 3f e1 c9 6f d0 37 a7 00 f2 12 3b 31 10
 RIM-COD-URL: PhoneGapProxy.cod
-RIM-COD-Creation-Time: 1339593755
+RIM-COD-Creation-Time: 1339760700
 MicroEdition-Configuration: CLDC-1.1
 MIDlet-Jar-URL: PhoneGapProxy.jar
-RIM-COD-SHA1-19: 78 92 b7 04 39 78 d7 57 8f 55 f1 b9 2b 81 59 66 fc 33 65 5a
-RIM-COD-SHA1-18: 20 91 d8 6c 8c e5 60 fa 04 8b 8e 23 d9 a7 fc 6f ca 40 da a5
-RIM-COD-SHA1-17: 05 1e 04 44 11 ae 4d 1a b7 3b 3f f7 33 f6 69 2c 8c 21 9e 56
-RIM-COD-SHA1-16: da 62 98 d5 4b fa 0f f1 c9 b3 b1 34 a9 1d f8 1f 60 b5 25 8d
-RIM-COD-SHA1-15: 3d ea 38 2e fc 5c 00 49 99 0a d2 94 86 90 fe e6 84 c0 70 67
-RIM-COD-SHA1-14: 0f 9d e3 8b 54 ba 62 a9 68 70 7a 59 77 f1 ec 6a d2 47 1f 4e
-RIM-COD-SHA1-13: c6 69 e8 c5 76 94 02 e8 89 f0 10 7a cc 6e dd 3f d4 a5 d6 cf
-RIM-COD-SHA1-12: 80 16 15 8f 50 4f 82 8f 68 82 d9 e2 b2 24 f6 63 98 2e d6 1e
-RIM-COD-Size-9: 62356
-RIM-COD-SHA1-11: 8d a1 73 54 92 28 80 12 2f 61 5b 34 fa 49 49 e3 fe b5 09 96
-RIM-COD-Size-8: 65004
-RIM-COD-SHA1-10: 38 e3 2d d0 3f 48 d0 2e f6 66 50 77 18 c5 5e b4 50 5a ea 9a
-RIM-COD-Size-7: 66772
+RIM-COD-SHA1-19: 20 4c 81 d8 96 1c e2 06 69 f5 64 ba 1c 32 8c ea 2b 3d 5d 59
+RIM-COD-SHA1-18: ea cf 82 26 d5 5c 48 51 ae 90 bc 84 57 98 9c 82 24 c7 9e d3
+RIM-COD-SHA1-17: 42 30 4a 2e dc c6 38 39 1b a5 b8 f0 44 a2 af 67 61 c6 da 2a
+RIM-COD-SHA1-16: 0d 30 02 6e f6 e9 a3 6a 71 69 09 1a 1e ec f2 02 80 d4 2c 36
+RIM-COD-SHA1-15: d8 2d 9d 15 af 66 1e 2d 32 e1 cc 3c ec 18 96 07 c5 b5 d4 4d
+RIM-COD-SHA1-14: c8 02 b8 32 08 01 d1 ef 42 b7 ff 1f 6d 89 c0 3c 54 96 80 5c
+RIM-COD-SHA1-13: 27 e6 12 d9 d9 66 9f d5 f5 52 50 62 79 0f 61 65 41 bd 8f 69
+RIM-COD-SHA1-12: d1 f7 4f 31 d3 79 55 14 14 9e ff 11 de f0 d3 58 b2 d0 21 4c
+RIM-COD-Size-9: 62984
+RIM-COD-SHA1-11: 69 5e e7 db 0c 98 f3 6e b7 37 36 ba 64 49 af 91 b9 6c 76 f7
+RIM-COD-Size-8: 64596
+RIM-COD-SHA1-10: 9d 8b d4 aa 64 d4 da 4d 25 4f 66 a9 e8 12 a3 4f 95 25 b6 4b
+RIM-COD-Size-7: 67688
 MIDlet-Description: This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) in a desktop browser using all the native features of cordova, like camera access, ...
-RIM-COD-Size-6: 68908
-RIM-COD-Size-5: 62792
-RIM-COD-Size-4: 65196
-RIM-COD-Size-3: 65048
-RIM-COD-Size-2: 73644
+RIM-COD-Size-6: 64004
+RIM-COD-Size-5: 63468
+RIM-COD-Size-4: 69216
+RIM-COD-Size-3: 64872
+RIM-COD-Size-2: 73640
 RIM-COD-Size-1: 71180
 MIDlet-1: PhoneGap-Proxy,resources/icon.png,rim:foreground;WIDGET;
 MIDlet-Name: PhoneGap-Proxy
-RIM-COD-SHA1: 7d 69 91 14 d7 de 78 56 39 77 4f e5 26 97 b8 6d 79 79 8c 28
+RIM-COD-SHA1: 95 6d ea 46 5c 19 5e 3b 54 0f e0 15 4b 74 ab a7 00 a0 b9 b4
 RIM-COD-Module-Dependencies: net_rim_cldc,net_rim_bb_web_jse_api,net_rim_xml_org,net_rim_bb_browser_field2_api,net_rim_os,net_rim_bbapi_phone,net_rim_bbapi_mailv2,net_rim_bbapi_push,net_rim_bbapi_messagelist,net_rim_pdap,net_rim_bbapi_invoke,net_rim_bbapi_browser,net_rim_networkapi,net_rim_bb_browser_field_api,net_rim_xml,net_rim_locationapi
-MIDlet-Jar-Size: 1624713
+MIDlet-Jar-Size: 1625586
 RIM-COD-URL-30: PhoneGapProxy-30.cod
 RIM-COD-URL-9: PhoneGapProxy-9.cod
 RIM-COD-URL-8: PhoneGapProxy-8.cod

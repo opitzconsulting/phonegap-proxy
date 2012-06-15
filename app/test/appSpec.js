@@ -29,32 +29,14 @@ describe('app', function() {
 	var connected = checkbox("#connected");
 
 	var container;
-	var io;
-	var socket;
-	var emits = {};
-	var ons = {};
+	var appSocket = window.socketioMock.appSocket;
+	var clientSocket = window.socketioMock.clientSocket;
 
 	beforeEach(function() {
 		container = $("<div></div>");
 		$("body").append(container);
 		container.append('<input type="text" id="server" value=""/><input type="text" id="channel" value=""/><input type="checkbox" id="connected">');
 		container.trigger("create");
-		emits = {};
-		ons = {};
-
-		socket = {
-			on: jasmine.createSpy('on').andCallFake(function(event, callback) {
-				ons[event] = callback;
-			}),
-			emit: jasmine.createSpy('emit').andCallFake(function(event) {
-				emits[event] = Array.prototype.slice.call(arguments, 1);
-			}),
-			disconnect: jasmine.createSpy('disconnect')
-		};
-		window.io = io = {
-			connect: jasmine.createSpy('connect').andReturn(socket)
-		};
-	
 	});
 
 	afterEach(function() {
@@ -65,9 +47,15 @@ describe('app', function() {
 		var someAddr = 'http://someAddr';
 		var someChannel = 'someChannel';
 		var someDevice;
+		var oldDevice;
 
 		beforeEach(function() {
+			oldDevice = window.device;
 			someDevice = window.device = 'someDevice';
+		});
+
+		afterEach(function() {
+			window.device = oldDevice;
 		});
 
 		it('should connect to the server defined in the input', function() {
@@ -82,7 +70,7 @@ describe('app', function() {
 			channel(someChannel);
 			connected(true);
 			connected(false);
-			expect(socket.disconnect).toHaveBeenCalled();
+			expect(appSocket.disconnect).toHaveBeenCalled();
 
 		});
 
@@ -90,105 +78,177 @@ describe('app', function() {
 			server(someAddr);
 			channel(someChannel);
 			connected(true);
-			ons['connect']();
-			expect(emits['device'][0]).toEqual({
-				channel: someChannel,
-				device: someDevice
-			});
+			appSocket.ons.connect();
+			expect(appSocket.emits.device).toEqual([someChannel,someDevice]);
 		});
 		
 	});
 
 
-	describe('clientRequest', function() {
-		var someAddr = 'http://someAddr';
-		var someChannel = 'someChannel';
-		var resultCallback;
-
+	describe('exec', function() {
+		var oldExecHandlers, execHandlers;
 		beforeEach(function() {
-			server(someAddr);
-			channel(someChannel);
+			oldExecHandlers = window.execHandlers;
+			server('someaddr');
+			channel('someChannel');
 			connected(true);
-			resultCallback = jasmine.createSpy('resultCallback');
+			execHandlers = window.execHandlers = {
+				someService: {
+					someAction: jasmine.createSpy('someAction')
+				}
+			};
 		});
 
-		function callClient(data) {
-			ons['clientRequest'](data, resultCallback);
+		afterEach(function() {
+			window.execHandlers = oldExecHandlers;
+		});
+
+		describe('execHandlers', function() {
+			it("should dispatch to the execHandler", function() {
+				var someCallbackId = '123';
+				var someActionArgs = [1,2];
+				appSocket.ons.exec({service: 'someService', action: 'someAction', callbackId: someCallbackId, actionArgs: someActionArgs});
+				expect(execHandlers.someService.someAction).toHaveBeenCalled();
+				var call = execHandlers.someService.someAction.mostRecentCall;
+				expect(call.args[2]).toBe(someActionArgs);
+			});
+
+			it("should send the successCallback message via socketio", function() {
+				var someCallbackId = '123';
+				var someActionArgs = [1,2];
+				appSocket.ons.exec({service: 'someService', action: 'someAction', callbackId: someCallbackId, actionArgs: someActionArgs});
+				var call = execHandlers.someService.someAction.mostRecentCall;
+				var someMessage = 'someMessage';
+				call.args[0](someMessage);
+				expect(appSocket.emits.callback[0]).toEqual({
+					message: someMessage,
+					callbackId: someCallbackId,
+					success: true
+				});
+			});
+
+			it("should send the errorCallback message via socketio", function() {
+				var someCallbackId = '123';
+				var someActionArgs = [1,2];
+				appSocket.ons.exec({service: 'someService', action: 'someAction', callbackId: someCallbackId, actionArgs: someActionArgs});
+				var call = execHandlers.someService.someAction.mostRecentCall;
+				var someMessage = 'someMessage';
+				call.args[1](someMessage);
+				expect(appSocket.emits.callback[0]).toEqual({
+					message: someMessage,
+					callbackId: someCallbackId,
+					success: false
+				});
+			});
+
+			it("should send an error message if an exception occured", function() {
+				var someCallbackId = '123';
+				var someActionArgs = [1,2];
+				execHandlers.someService.someAction.andThrow(new Error('test'));
+				appSocket.ons.exec({service: 'someService', action: 'someAction', callbackId: someCallbackId, actionArgs: someActionArgs});
+				expect(appSocket.emits.callback[0].callbackId).toBe(someCallbackId);
+				expect(appSocket.emits.callback[0].success).toBe(false);
+				expect(appSocket.emits.callback[0].message.substring(0,11)).toBe('Error: test');
+			});
+		});
+
+		describe('delegate to cordova exec', function() {
+			it("should delegate to cordova exec when no execHandler exists", function() {
+				var exec = jasmine.createSpy('exec');
+				spyOn(cordova, 'require').andReturn(exec);
+
+				var someService = 'someService2';
+				var someAction = 'someAction2';
+				var someCallbackId = '123';
+				var someActionArgs = [1,2];
+				appSocket.ons.exec({service: someService, action: someAction, callbackId: someCallbackId, actionArgs: someActionArgs});
+				expect(cordova.require).toHaveBeenCalledWith('cordova/exec');
+				var call = exec.mostRecentCall;
+				expect(call.args[2]).toBe(someService);
+				expect(call.args[3]).toBe(someAction);
+				expect(call.args[4]).toBe(someActionArgs);
+			});
+		});
+
+	});
+	describe('exec handlers', function() {
+		var successCallback, errorCallback;
+		beforeEach(function() {
+			server('someaddr');
+			channel('someChannel');
+			connected(true);
+
+			successCallback = jasmine.createSpy('success');
+			errorCallback = jasmine.createSpy('error');
+		});
+
+		function checkFunctionCall(object, fnName, args) {
+			// create a command from the client
+			object[fnName].apply(object, args);
+			var command = clientSocket.emits.exec[0];
+
+			// execute the command in the app.
+			spyOn(object, fnName);
+			appSocket.ons.exec(command);
+
+			// expect that the original function is called by the app with the same arguments
+			var call = object[fnName].mostRecentCall;
+			var i, arg, hasSuccessCallback;
+			for (i=0; i<args.length; i++) {
+				var arg = args[i];
+				if (typeof arg==='function') {
+					expect(typeof call.args[i]).toBe('function');
+				} else {
+					expect(call.args[i]).toEqual(args[i]);
+				}
+				if (arg===successCallback) {
+					hasSuccessCallback = true;
+				}
+			}
+
+			// check that the result is passed through unmodified.
+			if (hasSuccessCallback) {
+				var someMessage = 'someMessage';
+				call.args[0](someMessage);
+				
+				clientSocket.ons.callback(appSocket.emits.callback[0]);
+				expect(successCallback).toHaveBeenCalledWith(someMessage);			
+			}
 		}
 
-		describe('global object function', function() {
-			var someGlobalObj;
+		function withGlobals(globals, callback) {
+			var old = {};
+			for (var x in globals) {
+				old[x] = window[x];
+				window[x] = globals[x];
+			}
+			try {
+				return callback();
+			} finally {
+				for (var x in old) {
+					window[x] = old[x];
+				}				
+			}
+		}
 
-			beforeEach(function() {
-				someGlobalObj = window.someGlobalObj = {
-					someFn: jasmine.createSpy('someFn')
-				};
+		it("should support navigator.camera.getPicture", function() {
+			checkFunctionCall(navigator.camera, 'getPicture', [successCallback, errorCallback, { quality : 100, destinationType : 2, sourceType : 3, targetWidth : 100, targetHeight : 100, encodingType : 10, mediaType : 20, allowEdit : false, correctOrientation : false, saveToPhotoAlbum : false, popoverOptions : {} }]);
+		});				
+
+		it("should support window.device.getInfo", function() {
+			// create a command from the client
+			window.device.getInfo(successCallback, errorCallback);
+			var command = clientSocket.emits.exec[0];
+
+			// execute the command in the app.
+			withGlobals({device: 'someDevice'}, function() {
+				appSocket.ons.exec(command);
+				clientSocket.ons.callback(appSocket.emits.callback[0]);
+				expect(successCallback).toHaveBeenCalledWith('someDevice');
 			});
+		});	
 
-			it("should execute the global object function with the given args", function() {
-				var someArgs = [1,2];
-				callClient({
-					remoteFn: {
-						globalObjExpr: 'someGlobalObj',
-						fnName: 'someFn'
-					},
-					args: someArgs
-				});
-				expect(someGlobalObj.someFn).toHaveBeenCalledWith(1,2);
-			});
-
-			it("should return the result of the global object function", function() {
-				var someResult = 'someResult';
-				someGlobalObj.someFn.andReturn(someResult)
-				callClient({
-					remoteFn: {
-						globalObjExpr: 'someGlobalObj',
-						fnName: 'someFn'
-					}
-				});
-				expect(resultCallback).toHaveBeenCalledWith({data:someResult, error: false});
-			});
-
-			it("should return the error of the global object function", function() {
-				var someMessage = 'someMessage';
-				someGlobalObj.someFn.andThrow(someMessage)
-				callClient({
-					remoteFn: {
-						globalObjExpr: 'someGlobalObj',
-						fnName: 'someFn'
-					}
-				});
-				expect(resultCallback).toHaveBeenCalledWith({data:someMessage, error: true});
-			});
-
-			it("should inject callbacks into the function arguments", function() {
-				callClient({
-					remoteFn: {
-						globalObjExpr: 'someGlobalObj',
-						fnName: 'someFn'
-					},
-					args: ['someArg', {callbackId: '123'}]
-				});
-				var generatedCb = someGlobalObj.someFn.mostRecentCall.args[1];
-				expect(typeof generatedCb).toBe('function');
-			});
-
-			it("should emit the callback arguments with it's id and channel when the callback is called", function() {
-				var someCbArg = 'someCbArg';
-				var someCallbackId = '123';
-				callClient({
-					remoteFn: {
-						globalObjExpr: 'someGlobalObj',
-						fnName: 'someFn'
-					},
-					args: ['someArg', {callbackId: someCallbackId}]
-				});
-				var generatedCb = someGlobalObj.someFn.mostRecentCall.args[1];
-				generatedCb(someCbArg);
-				expect(emits['callback']).toEqual([someChannel, someCallbackId, [someCbArg]]);
-			});
-		});
-
+			
 	});
 
 });

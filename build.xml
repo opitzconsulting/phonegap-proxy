@@ -1,7 +1,7 @@
 <project name="PhoneGap-Proxy" default="choose">
 	
 	<property name="appDownloadDir" value="${basedir}/server/static/appdownload"/>
-	<property name="appSourceDir" value="app"/>
+	<property name="appSourceDir" value="app/src"/>
 
 	<target name="init">
 		<property name="buildDir" value="target"/>

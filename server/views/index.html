@@ -27,7 +27,7 @@ This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) 
 <tbody>
 <% for (var channel in devices) { var device = devices[channel]; %>
 	<tr>
-		<td><%= channel %></td><td><%= device.device.name %></td><td>
+		<td><%= channel %></td><td><%= device.name %></td><td>
 		http://<%= address.address %>:<%= address.port%>/<%= channel %>/cordova.js</td>
 		<td><a href="demo-client.html#!<%= channel%>">Demo</a></td>
 	</tr>	

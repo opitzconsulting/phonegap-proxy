@@ -1,3 +1,5 @@
+// ------------------
+// UI
 var doc = $(document);
 var connectedSelector = "#connected";
 var serverSelector = "#server";
@@ -54,6 +56,10 @@ $(function() {
 	updateUi();
 });
 
+
+// ------------------
+// Messaging
+
 function getErrorMessage(e) {
 	if (e.stack) {
 		return e.stack;
@@ -66,7 +72,7 @@ function getErrorMessage(e) {
 	}
 }
 
-// Used by deviceEval to read in a remote file
+// Needed for proxy XHR implementation
 function getRemoteFile(url, callback) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url, true);
@@ -83,52 +89,40 @@ function connect() {
 	socket = io.connect(server);
 
 	socket.on("connect", function() {
-	    socket.emit("device", {
-	    	channel: channel,
-	    	device: window.device
-	    });
+	    socket.emit("device", channel, window.device);
 	});
 
-	function generateCallback(callbackId) {
-		return function() {
-			socket.emit("callback", channel, callbackId, Array.prototype.slice.call(arguments))
+	function createCallback(callbackId, success) {
+		return function(message) {
+			socket.emit("callback", {callbackId: callbackId, success: success, message: message});
 		}
 	}
 
-	function generateCallbacks(args) {
-		if (!args) {
-			return;
-		}
-		var i, arg;
-		for (i=0; i<args.length; i++) {
-			arg = args[i];
-			if (arg && arg.callbackId) {
-				args[i] = generateCallback(arg.callbackId);
-			}
-		}
-	}
-
-	socket.on('clientRequest', function (request, callback) {
+	socket.on('exec', function (command) {
+	    var successCallback, errorCallback
+	    if (command.callbackId) {
+		    successCallback = createCallback(command.callbackId, true);
+		    errorCallback = createCallback(command.callbackId, false);
+	    }
 	    try {
-	    	var globalObj = eval('globalObj = '+request.remoteFn.globalObjExpr);
-	    	var fn = globalObj[request.remoteFn.fnName];
-	    	generateCallbacks(request.args);
-	    	var result = fn.apply(globalObj, request.args);
-	    	callback({
-	    		error: false,
-	    		data: result
-	    	});
+	    	var service = execHandlers[command.service];
+	    	var action = service && service[command.action];
+	    	if (!action) {
+	    		// use the default exec...
+				var delegateExec = cordova.require("cordova/exec");
+	    		delegateExec(successCallback, errorCallback, command.service, command.action, command.actionArgs);
+	    	} else {
+	    		action(successCallback, errorCallback, command.actionArgs);
+	    	}
 	    } catch (e) {
 	        console.log(e);
 	        var errMsg = getErrorMessage(e);
-		    callback({
-		    	error: true,
-		    	data: errMsg
-		    });
+	        if (errorCallback) {
+	        	errorCallback(errMsg);
+	        }
 	    }
 	});
 }
-
 
 function disconnect() {
 	if (!socket) {
@@ -139,3 +133,27 @@ function disconnect() {
 	io.j = [];
 	io.sockets = [];
 }
+
+// Implementation of Cordova.exec using the Cordova API
+var execHandlers = window.execHandlers = {
+	Camera: {
+		takePicture: function(successCallback, errorCallback, args) {
+			var options = {};
+			var argNames = ['quality', 'destinationType', 'sourceType', 'targetWidth', 'targetHeight', 'encodingType', 'mediaType', 'allowEdit', 'correctOrientation', 'saveToPhotoAlbum', 'popoverOptions'];
+			for (var i=0; i<args.length; i++) {
+				options[argNames[i]] = args[i];
+			}
+			navigator.camera.getPicture(successCallback, errorCallback, options);
+		}
+	},
+	Device: {
+		getDeviceInfo: function(successCallback, errorCallback) {
+			successCallback(window.device);
+		}
+	}
+};
+
+
+
+
+
