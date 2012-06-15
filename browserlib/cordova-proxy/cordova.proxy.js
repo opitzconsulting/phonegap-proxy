@@ -1,6 +1,6 @@
-// commit f8fa7c8f54c1c5401ccf325da8bd937f8225b745
+// commit 570717ed8b350aea2cb25852a264bad8f7c52654
 
-// File generated at :: Fri Jun 15 2012 14:10:46 GMT+0200 (CEST)
+// File generated at :: Fri Jun 15 2012 17:49:43 GMT+0200 (CEST)
 
 /*
  Licensed to the Apache Software Foundation (ASF) under one
@@ -983,11 +983,16 @@ function connect(serverAddr, channelName) {
 
     socket.on('callback', function(response) {
         if (response.success) {
-            cordova.callbackSuccess(response.callbackId, {status: cordova.callbackStatus.OK, message: response.message});
+            cordova.callbackSuccess(response.callbackId, response.args);
         } else {
-            cordova.callbackError(response.callbackId, {message: response.message});
+            cordova.callbackError(response.callbackId, response.args);
         }
     });
+    
+    socket.on('event', function(evt) {
+        cordova.fireDocumentEvent(evt.type, evt);
+    });
+
     channel.onNativeReady.fire();
 }
 
@@ -1000,11 +1005,35 @@ module.exports = exec;
 define("cordova/platform", function(require, exports, module) {
 module.exports = {
     id: "phonegap-proxy",
-    initialize:function() {},
+    initialize:function() {
+        // some platforms don't allow reassigning / overriding navigator.geolocation object.
+        // So clobber its methods here instead :)
+        var geo = require('cordova/plugin/geolocation');
+        if (!navigator.geolocation) {
+            navigator.geolocation = {};
+        }
+
+        navigator.geolocation.getCurrentPosition = geo.getCurrentPosition;
+        navigator.geolocation.watchPosition = geo.watchPosition;
+        navigator.geolocation.clearWatch = geo.clearWatch;
+
+    },
     objects: {
         device: {
             path: 'cordova/plugin/proxy/device'
-        }
+        },
+        File: { // exists natively on Chrome, override
+            path: "cordova/plugin/File"
+        },
+        FileReader: { // exists natively on Chrome, override
+            path: "cordova/plugin/FileReader"
+        },
+        FileError: { // exists natively on Chrome, override
+            path: "cordova/plugin/FileError"
+        },
+        MediaError: { // exists natively on Chrome, override
+            path: "cordova/plugin/MediaError"
+        }        
     },
     merges:{}
 };

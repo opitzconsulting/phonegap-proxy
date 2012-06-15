@@ -31,16 +31,23 @@ describe('app', function() {
 	var container;
 	var appSocket = window.socketioMock.appSocket;
 	var clientSocket = window.socketioMock.clientSocket;
+	var oldTimeout;
 
 	beforeEach(function() {
 		container = $("<div></div>");
 		$("body").append(container);
 		container.append('<input type="text" id="server" value=""/><input type="text" id="channel" value=""/><input type="checkbox" id="connected">');
 		container.trigger("create");
+		oldTimeout = window.setTimeout;
+		// execute setTimeout synchronously
+		window.setTimeout = function(callback) {
+			callback();
+		};
 	});
 
 	afterEach(function() {
 		container.remove();
+		window.setTimeout = oldTimeout;
 	});
 
 	describe('connection handling', function() {
@@ -121,7 +128,7 @@ describe('app', function() {
 				var someMessage = 'someMessage';
 				call.args[0](someMessage);
 				expect(appSocket.emits.callback[0]).toEqual({
-					message: someMessage,
+					args : { status : cordova.callbackStatus.OK, message : someMessage },
 					callbackId: someCallbackId,
 					success: true
 				});
@@ -135,7 +142,7 @@ describe('app', function() {
 				var someMessage = 'someMessage';
 				call.args[1](someMessage);
 				expect(appSocket.emits.callback[0]).toEqual({
-					message: someMessage,
+					args : { status : cordova.callbackStatus.OK, message : someMessage },
 					callbackId: someCallbackId,
 					success: false
 				});
@@ -148,7 +155,7 @@ describe('app', function() {
 				appSocket.ons.exec({service: 'someService', action: 'someAction', callbackId: someCallbackId, actionArgs: someActionArgs});
 				expect(appSocket.emits.callback[0].callbackId).toBe(someCallbackId);
 				expect(appSocket.emits.callback[0].success).toBe(false);
-				expect(appSocket.emits.callback[0].message.substring(0,11)).toBe('Error: test');
+				expect(appSocket.emits.callback[0].args.message.substring(0,11)).toBe('Error: test');
 			});
 		});
 
@@ -168,9 +175,46 @@ describe('app', function() {
 				expect(call.args[3]).toBe(someAction);
 				expect(call.args[4]).toBe(someActionArgs);
 			});
-		});
 
+			it("should send the keepCallback flag if the delegate exec did not remote the callback", function() {
+				var exec = jasmine.createSpy('exec');
+				spyOn(cordova, 'require').andReturn(exec);
+
+				var someService = 'someService2';
+				var someCallbackId = '123';
+				
+				var nextCallbackId = (someService + cordova.callbackId);
+				appSocket.ons.exec({service: someService, action: 'someAction2', callbackId: someCallbackId, actionArgs: [1,2]});
+				
+				cordova.callbacks[nextCallbackId] = true;
+				var call = exec.mostRecentCall;
+				call.args[0]();
+
+				expect(appSocket.emits.callback[0]).toEqual({
+					args : { status : cordova.callbackStatus.OK, message : undefined, keepCallback:true },
+					callbackId: someCallbackId,
+					success: true
+				});
+			});
+
+		});
 	});
+
+	describe('event handlers', function() {
+		beforeEach(function() {
+			server('someaddr');
+			channel('someChannel');
+			connected(true);
+		});
+		it("should send a notification to the client when an event happends", function() {
+			var someData = 'someData';
+			cordova.fireDocumentEvent("pause", {data: someData});
+			var emittedEvent = appSocket.emits.event[0];
+			expect(emittedEvent.type).toBe("pause");
+			expect(emittedEvent.data).toBe(someData);
+		});
+	});
+
 	describe('exec handlers', function() {
 		var successCallback, errorCallback;
 		beforeEach(function() {
@@ -181,40 +225,6 @@ describe('app', function() {
 			successCallback = jasmine.createSpy('success');
 			errorCallback = jasmine.createSpy('error');
 		});
-
-		function checkFunctionCall(object, fnName, args) {
-			// create a command from the client
-			object[fnName].apply(object, args);
-			var command = clientSocket.emits.exec[0];
-
-			// execute the command in the app.
-			spyOn(object, fnName);
-			appSocket.ons.exec(command);
-
-			// expect that the original function is called by the app with the same arguments
-			var call = object[fnName].mostRecentCall;
-			var i, arg, hasSuccessCallback;
-			for (i=0; i<args.length; i++) {
-				var arg = args[i];
-				if (typeof arg==='function') {
-					expect(typeof call.args[i]).toBe('function');
-				} else {
-					expect(call.args[i]).toEqual(args[i]);
-				}
-				if (arg===successCallback) {
-					hasSuccessCallback = true;
-				}
-			}
-
-			// check that the result is passed through unmodified.
-			if (hasSuccessCallback) {
-				var someMessage = 'someMessage';
-				call.args[0](someMessage);
-				
-				clientSocket.ons.callback(appSocket.emits.callback[0]);
-				expect(successCallback).toHaveBeenCalledWith(someMessage);			
-			}
-		}
 
 		function withGlobals(globals, callback) {
 			var old = {};
@@ -231,24 +241,97 @@ describe('app', function() {
 			}
 		}
 
-		it("should support navigator.camera.getPicture", function() {
-			checkFunctionCall(navigator.camera, 'getPicture', [successCallback, errorCallback, { quality : 100, destinationType : 2, sourceType : 3, targetWidth : 100, targetHeight : 100, encodingType : 10, mediaType : 20, allowEdit : false, correctOrientation : false, saveToPhotoAlbum : false, popoverOptions : {} }]);
-		});				
-
 		it("should support window.device.getInfo", function() {
-			// create a command from the client
 			window.device.getInfo(successCallback, errorCallback);
 			var command = clientSocket.emits.exec[0];
 
-			// execute the command in the app.
 			withGlobals({device: 'someDevice'}, function() {
 				appSocket.ons.exec(command);
 				clientSocket.ons.callback(appSocket.emits.callback[0]);
 				expect(successCallback).toHaveBeenCalledWith('someDevice');
 			});
-		});	
+		});
 
-			
+		describe('FileReader.readAsText', function() {
+			it("should call FileReader.readAsText with the arguments from the client", function() {
+				// create a command from the client
+				var fr1 = new FileReader();
+				var someFile = 'someFile';
+				var someEnc = 'someEnc';
+				fr1.readAsText(someFile, someEnc);
+
+				var command = clientSocket.emits.exec[0];
+
+				// execute the command in the app.
+				var fr2;
+				spyOn(FileReader.prototype, 'readAsText').andCallFake(function() {
+					fr2 = this;
+				});
+				appSocket.ons.exec(command);
+
+				expect(fr2.readAsText).toHaveBeenCalledWith(someFile, someEnc);
+			});
+
+			it("should forward the result to the client", function() {
+				var fr1 = new FileReader();
+				fr1.onloadend = jasmine.createSpy('onloadend');
+				fr1.readAsText('someFile', 'someEnc');
+
+				var command = clientSocket.emits.exec[0];
+
+				var fr2;
+				spyOn(FileReader.prototype, 'readAsText').andCallFake(function() {
+					fr2 = this;
+				});
+				appSocket.ons.exec(command);
+				var someResult = 'someResult';
+				fr2.result = someResult;
+				fr2.onloadend();
+				
+				clientSocket.ons.callback(appSocket.emits.callback[0]);
+				
+				expect(fr1.onloadend).toHaveBeenCalled();
+				expect(fr1.result).toBe(someResult);
+			});
+
+			it("should forward FileErrors to the client", function() {
+				var fr1 = new FileReader();
+				fr1.onloadend = jasmine.createSpy('onloadend');
+				fr1.readAsText('someFile', 'someEnc');
+
+				var command = clientSocket.emits.exec[0];
+
+				var fr2;
+				spyOn(FileReader.prototype, 'readAsText').andCallFake(function() {
+					fr2 = this;
+				});
+				appSocket.ons.exec(command);
+				var someError = "someError";
+				fr2.error = new FileError(someError);
+				fr2.onloadend();
+				
+				clientSocket.ons.callback(appSocket.emits.callback[0]);
+				
+				expect(fr1.onloadend).toHaveBeenCalled();
+				expect(fr1.error.code).toBe(someError);
+
+			});
+		});
+
+		it("should call navigator.notification.beep with the arguments from the client", function() {
+			// create a command from the client
+			var someCount = 2;
+			navigator.notification.beep(someCount);
+
+			var command = clientSocket.emits.exec[0];
+
+			// execute the command in the app.
+			var fr2;
+			spyOn(navigator.notification, 'beep');
+			appSocket.ons.exec(command);
+
+			expect(navigator.notification.beep).toHaveBeenCalledWith(someCount);
+		});			
 	});
 
 });

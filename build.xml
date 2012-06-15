@@ -200,7 +200,8 @@
 		<downloadForPlatform platform="winphone"/>
 	</target>
 	
-	<target name="downloadApp" depends="downloadBlackberry, downloadAndroid, downloadWinphone, downloadSymbian, downloadWebos, downloadIos"/>
+	<!-- Currently, we only support android, wp7 and ios -->
+	<target name="downloadApp" depends="downloadAndroid, downloadWinphone, downloadIos"/>
 		
 	<target name="buildApp" depends="createApp, updateApp, waitForBuild, downloadApp"/>
 

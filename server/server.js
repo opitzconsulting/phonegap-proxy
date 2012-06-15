@@ -132,6 +132,15 @@ io.sockets.on('connection', function (socket) {
       };
       clientSocket.emit("callback", response);
     });
+
+    socket.on("event", function(data) {
+      var clientSocket = clients[channel];
+      if (!clientSocket) {
+        console.log("could not find client for channel "+channel);
+        return;
+      };
+      clientSocket.emit("event", data);
+    });
   });
 
   socket.on("client", function(channel) {
