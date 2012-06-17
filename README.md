@@ -89,14 +89,17 @@ Why not Bada or Playbook?
 - Those platforms do not use `cordova/exec`, so this approach above would require us to 
   dispatch every possible `cordova/exec` call to a valid Cordova API. This is possible, but takes some time...
 
+Why use a java server for socket.io?
+
+- Almost all our projects are written for JEE, so java seems a good choice. And socket.io seems currently 
+  the best approach for server push. However, it should be very easy to implement a server with node,
+  just have look at the server sources.
+
 
 Dependencies:
 ---------------
 - cordova 1.8
-- node.js 0.6
-- express
-- socket.io express
-- ejs
+- socket.io client + java implementation of socket.io server (https://github.com/mrniko/netty-socketio)
 - PhoneGap Build
 
 License: 
