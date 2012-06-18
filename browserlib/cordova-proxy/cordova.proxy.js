@@ -1,6 +1,6 @@
-// commit 570717ed8b350aea2cb25852a264bad8f7c52654
+// commit 30c0e6bf6b725fe14418c54ee61ec3eb756553cd
 
-// File generated at :: Fri Jun 15 2012 17:49:43 GMT+0200 (CEST)
+// File generated at :: Mon Jun 18 2012 20:56:11 GMT+0200 (CEST)
 
 /*
  Licensed to the Apache Software Foundation (ASF) under one
@@ -933,9 +933,10 @@ define("cordova/exec", function(require, exports, module) {
 var cordova = require('cordova'),
     utils = require('cordova/utils'),
     channel = require('cordova/channel'),
-    io = require('cordova/plugin/proxy/socket.io.client');
+    cometd = require('cordova/plugin/proxy/cometd');
 
 var socket;
+var cometdChannel;
 
 function exec() {
     var successCallback, failCallback, service, action, actionArgs, splitCommand;
@@ -968,7 +969,7 @@ function exec() {
             {success:successCallback, fail:failCallback};
     }
 
-    socket.emit('exec', {
+    socket.publish('/exec/'+cometdChannel, {
         callbackId: callbackId,
         service: service,
         action: action,
@@ -977,19 +978,24 @@ function exec() {
 }
 
 
-function connect(serverAddr, channelName) {
-    socket = io.connect(serverAddr);
-    socket.emit('client', channelName);
+function connect(config) {
+    cometdChannel = config.channel;
+    delete config.channel;
+    socket = cometd.connect(config);
 
-    socket.on('callback', function(response) {
+    socket.subscribe('/callback/'+cometdChannel, function(message) {
+        var response = message.data;
+        var args = response.args;
+
         if (response.success) {
-            cordova.callbackSuccess(response.callbackId, response.args);
+            cordova.callbackSuccess(response.callbackId, args);
         } else {
-            cordova.callbackError(response.callbackId, response.args);
+            cordova.callbackError(response.callbackId, args);
         }
     });
-    
-    socket.on('event', function(evt) {
+
+    socket.subscribe('/event/'+cometdChannel, function(message) {
+        var evt = message.data;
         cordova.fireDocumentEvent(evt.type, evt);
     });
 
@@ -4528,6 +4534,3087 @@ module.exports = {
 };
 });
 
+// file: lib/proxy/plugin/proxy/cometd.js
+define("cordova/plugin/proxy/cometd", function(require, exports, module) {
+/*
+ * Copyright (c) 2010 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+if (typeof dojo !== 'undefined')
+{
+    dojo.provide('org.cometd');
+}
+else
+{
+    // Namespaces for the cometd implementation
+    this.org = this.org || {};
+    org.cometd = {};
+}
+
+org.cometd.JSON = {};
+org.cometd.JSON.toJSON = org.cometd.JSON.fromJSON = function(object)
+{
+    throw 'Abstract';
+};
+
+org.cometd.Utils = {};
+
+org.cometd.Utils.isString = function(value)
+{
+    if (value === undefined || value === null)
+    {
+        return false;
+    }
+    return typeof value === 'string' ||  value instanceof String;
+};
+
+org.cometd.Utils.isArray = function(value)
+{
+    if (value === undefined || value === null)
+    {
+        return false;
+    }
+    return value instanceof Array;
+};
+
+/**
+ * Returns whether the given element is contained into the given array.
+ * @param element the element to check presence for
+ * @param array the array to check for the element presence
+ * @return the index of the element, if present, or a negative index if the element is not present
+ */
+org.cometd.Utils.inArray = function(element, array)
+{
+    for (var i = 0; i < array.length; ++i)
+    {
+        if (element === array[i])
+        {
+            return i;
+        }
+    }
+    return -1;
+};
+
+org.cometd.Utils.setTimeout = function(cometd, funktion, delay)
+{
+    return window.setTimeout(function()
+    {
+        try
+        {
+            funktion();
+        }
+        catch (x)
+        {
+            cometd._debug('Exception invoking timed function', funktion, x);
+        }
+    }, delay);
+};
+
+org.cometd.Utils.clearTimeout = function(timeoutHandle)
+{
+    window.clearTimeout(timeoutHandle);
+};
+
+/**
+ * A registry for transports used by the Cometd object.
+ */
+org.cometd.TransportRegistry = function()
+{
+    var _types = [];
+    var _transports = {};
+
+    this.getTransportTypes = function()
+    {
+        return _types.slice(0);
+    };
+
+    this.findTransportTypes = function(version, crossDomain, url)
+    {
+        var result = [];
+        for (var i = 0; i < _types.length; ++i)
+        {
+            var type = _types[i];
+            if (_transports[type].accept(version, crossDomain, url) === true)
+            {
+                result.push(type);
+            }
+        }
+        return result;
+    };
+
+    this.negotiateTransport = function(types, version, crossDomain, url)
+    {
+        for (var i = 0; i < _types.length; ++i)
+        {
+            var type = _types[i];
+            for (var j = 0; j < types.length; ++j)
+            {
+                if (type === types[j])
+                {
+                    var transport = _transports[type];
+                    if (transport.accept(version, crossDomain, url) === true)
+                    {
+                        return transport;
+                    }
+                }
+            }
+        }
+        return null;
+    };
+
+    this.add = function(type, transport, index)
+    {
+        var existing = false;
+        for (var i = 0; i < _types.length; ++i)
+        {
+            if (_types[i] === type)
+            {
+                existing = true;
+                break;
+            }
+        }
+
+        if (!existing)
+        {
+            if (typeof index !== 'number')
+            {
+                _types.push(type);
+            }
+            else
+            {
+                _types.splice(index, 0, type);
+            }
+            _transports[type] = transport;
+        }
+
+        return !existing;
+    };
+
+    this.find = function(type)
+    {
+        for (var i = 0; i < _types.length; ++i)
+        {
+            if (_types[i] === type)
+            {
+                return _transports[type];
+            }
+        }
+        return null;
+    };
+
+    this.remove = function(type)
+    {
+        for (var i = 0; i < _types.length; ++i)
+        {
+            if (_types[i] === type)
+            {
+                _types.splice(i, 1);
+                var transport = _transports[type];
+                delete _transports[type];
+                return transport;
+            }
+        }
+        return null;
+    };
+
+    this.clear = function()
+    {
+        _types = [];
+        _transports = {};
+    };
+
+    this.reset = function()
+    {
+        for (var i = 0; i < _types.length; ++i)
+        {
+            _transports[_types[i]].reset();
+        }
+    };
+};
+
+/**
+ * Base object with the common functionality for transports.
+ */
+org.cometd.Transport = function()
+{
+    var _type;
+    var _cometd;
+
+    /**
+     * Function invoked just after a transport has been successfully registered.
+     * @param type the type of transport (for example 'long-polling')
+     * @param cometd the cometd object this transport has been registered to
+     * @see #unregistered()
+     */
+    this.registered = function(type, cometd)
+    {
+        _type = type;
+        _cometd = cometd;
+    };
+
+    /**
+     * Function invoked just after a transport has been successfully unregistered.
+     * @see #registered(type, cometd)
+     */
+    this.unregistered = function()
+    {
+        _type = null;
+        _cometd = null;
+    };
+
+    this._debug = function()
+    {
+        _cometd._debug.apply(_cometd, arguments);
+    };
+
+    this._mixin = function()
+    {
+        return _cometd._mixin.apply(_cometd, arguments);
+    };
+
+    this.getConfiguration = function()
+    {
+        return _cometd.getConfiguration();
+    };
+
+    this.getAdvice = function()
+    {
+        return _cometd.getAdvice();
+    };
+
+    this.setTimeout = function(funktion, delay)
+    {
+        return org.cometd.Utils.setTimeout(_cometd, funktion, delay);
+    };
+
+    this.clearTimeout = function(handle)
+    {
+        org.cometd.Utils.clearTimeout(handle);
+    };
+
+    /**
+     * Converts the given response into an array of bayeux messages
+     * @param response the response to convert
+     * @return an array of bayeux messages obtained by converting the response
+     */
+    this.convertToMessages = function (response)
+    {
+        if (org.cometd.Utils.isString(response))
+        {
+            try
+            {
+                return org.cometd.JSON.fromJSON(response);
+            }
+            catch(x)
+            {
+                this._debug('Could not convert to JSON the following string', '"' + response + '"');
+                throw x;
+            }
+        }
+        if (org.cometd.Utils.isArray(response))
+        {
+            return response;
+        }
+        if (response === undefined || response === null)
+        {
+            return [];
+        }
+        if (response instanceof Object)
+        {
+            return [response];
+        }
+        throw 'Conversion Error ' + response + ', typeof ' + (typeof response);
+    };
+
+    /**
+     * Returns whether this transport can work for the given version and cross domain communication case.
+     * @param version a string indicating the transport version
+     * @param crossDomain a boolean indicating whether the communication is cross domain
+     * @return true if this transport can work for the given version and cross domain communication case,
+     * false otherwise
+     */
+    this.accept = function(version, crossDomain, url)
+    {
+        throw 'Abstract';
+    };
+
+    /**
+     * Returns the type of this transport.
+     * @see #registered(type, cometd)
+     */
+    this.getType = function()
+    {
+        return _type;
+    };
+
+    this.send = function(envelope, metaConnect)
+    {
+        throw 'Abstract';
+    };
+
+    this.reset = function()
+    {
+        this._debug('Transport', _type, 'reset');
+    };
+
+    this.abort = function()
+    {
+        this._debug('Transport', _type, 'aborted');
+    };
+
+    this.toString = function()
+    {
+        return this.getType();
+    };
+};
+
+org.cometd.Transport.derive = function(baseObject)
+{
+    function F() {}
+    F.prototype = baseObject;
+    return new F();
+};
+
+/**
+ * Base object with the common functionality for transports based on requests.
+ * The key responsibility is to allow at most 2 outstanding requests to the server,
+ * to avoid that requests are sent behind a long poll.
+ * To achieve this, we have one reserved request for the long poll, and all other
+ * requests are serialized one after the other.
+ */
+org.cometd.RequestTransport = function()
+{
+    var _super = new org.cometd.Transport();
+    var _self = org.cometd.Transport.derive(_super);
+    var _requestIds = 0;
+    var _metaConnectRequest = null;
+    var _requests = [];
+    var _envelopes = [];
+
+    function _coalesceEnvelopes(envelope)
+    {
+        while (_envelopes.length > 0)
+        {
+            var envelopeAndRequest = _envelopes[0];
+            var newEnvelope = envelopeAndRequest[0];
+            var newRequest = envelopeAndRequest[1];
+            if (newEnvelope.url === envelope.url &&
+                    newEnvelope.sync === envelope.sync)
+            {
+                _envelopes.shift();
+                envelope.messages = envelope.messages.concat(newEnvelope.messages);
+                this._debug('Coalesced', newEnvelope.messages.length, 'messages from request', newRequest.id);
+                continue;
+            }
+            break;
+        }
+    }
+
+    function _transportSend(envelope, request)
+    {
+        this.transportSend(envelope, request);
+        request.expired = false;
+
+        if (!envelope.sync)
+        {
+            var maxDelay = this.getConfiguration().maxNetworkDelay;
+            var delay = maxDelay;
+            if (request.metaConnect === true)
+            {
+                delay += this.getAdvice().timeout;
+            }
+
+            this._debug('Transport', this.getType(), 'waiting at most', delay, 'ms for the response, maxNetworkDelay', maxDelay);
+
+            var self = this;
+            request.timeout = this.setTimeout(function()
+            {
+                request.expired = true;
+                if (request.xhr)
+                {
+                    request.xhr.abort();
+                }
+                var errorMessage = 'Request ' + request.id + ' of transport ' + self.getType() + ' exceeded ' + delay + ' ms max network delay';
+                self._debug(errorMessage);
+                self.complete(request, false, request.metaConnect);
+                envelope.onFailure(request.xhr, envelope.messages, 'timeout', errorMessage);
+            }, delay);
+        }
+    }
+
+    function _queueSend(envelope)
+    {
+        var requestId = ++_requestIds;
+        var request = {
+            id: requestId,
+            metaConnect: false
+        };
+
+        // Consider the metaConnect requests which should always be present
+        if (_requests.length < this.getConfiguration().maxConnections - 1)
+        {
+            _requests.push(request);
+            _transportSend.call(this, envelope, request);
+        }
+        else
+        {
+            this._debug('Transport', this.getType(), 'queueing request', requestId, 'envelope', envelope);
+            _envelopes.push([envelope, request]);
+        }
+    }
+
+    function _metaConnectComplete(request)
+    {
+        var requestId = request.id;
+        this._debug('Transport', this.getType(), 'metaConnect complete, request', requestId);
+        if (_metaConnectRequest !== null && _metaConnectRequest.id !== requestId)
+        {
+            throw 'Longpoll request mismatch, completing request ' + requestId;
+        }
+
+        // Reset metaConnect request
+        _metaConnectRequest = null;
+    }
+
+    function _complete(request, success)
+    {
+        var index = org.cometd.Utils.inArray(request, _requests);
+        // The index can be negative if the request has been aborted
+        if (index >= 0)
+        {
+            _requests.splice(index, 1);
+        }
+
+        if (_envelopes.length > 0)
+        {
+            var envelopeAndRequest = _envelopes.shift();
+            var nextEnvelope = envelopeAndRequest[0];
+            var nextRequest = envelopeAndRequest[1];
+            this._debug('Transport dequeued request', nextRequest.id);
+            if (success)
+            {
+                if (this.getConfiguration().autoBatch)
+                {
+                    _coalesceEnvelopes.call(this, nextEnvelope);
+                }
+                _queueSend.call(this, nextEnvelope);
+                this._debug('Transport completed request', request.id, nextEnvelope);
+            }
+            else
+            {
+                // Keep the semantic of calling response callbacks asynchronously after the request
+                var self = this;
+                this.setTimeout(function()
+                {
+                    self.complete(nextRequest, false, nextRequest.metaConnect);
+                    nextEnvelope.onFailure(nextRequest.xhr, nextEnvelope.messages, 'error', 'Previous request failed');
+                }, 0);
+            }
+        }
+    }
+
+    _self.complete = function(request, success, metaConnect)
+    {
+        if (metaConnect)
+        {
+            _metaConnectComplete.call(this, request);
+        }
+        else
+        {
+            _complete.call(this, request, success);
+        }
+    };
+
+    /**
+     * Performs the actual send depending on the transport type details.
+     * @param envelope the envelope to send
+     * @param request the request information
+     */
+    _self.transportSend = function(envelope, request)
+    {
+        throw 'Abstract';
+    };
+
+    _self.transportSuccess = function(envelope, request, responses)
+    {
+        if (!request.expired)
+        {
+            this.clearTimeout(request.timeout);
+            this.complete(request, true, request.metaConnect);
+            if (responses && responses.length > 0)
+            {
+                envelope.onSuccess(responses);
+            }
+            else
+            {
+                envelope.onFailure(request.xhr, envelope.messages, 'Empty HTTP response');
+            }
+        }
+    };
+
+    _self.transportFailure = function(envelope, request, reason, exception)
+    {
+        if (!request.expired)
+        {
+            this.clearTimeout(request.timeout);
+            this.complete(request, false, request.metaConnect);
+            envelope.onFailure(request.xhr, envelope.messages, reason, exception);
+        }
+    };
+
+    function _metaConnectSend(envelope)
+    {
+        if (_metaConnectRequest !== null)
+        {
+            throw 'Concurrent metaConnect requests not allowed, request id=' + _metaConnectRequest.id + ' not yet completed';
+        }
+
+        var requestId = ++_requestIds;
+        this._debug('Transport', this.getType(), 'metaConnect send, request', requestId, 'envelope', envelope);
+        var request = {
+            id: requestId,
+            metaConnect: true
+        };
+        _transportSend.call(this, envelope, request);
+        _metaConnectRequest = request;
+    }
+
+    _self.send = function(envelope, metaConnect)
+    {
+        if (metaConnect)
+        {
+            _metaConnectSend.call(this, envelope);
+        }
+        else
+        {
+            _queueSend.call(this, envelope);
+        }
+    };
+
+    _self.abort = function()
+    {
+        _super.abort();
+        for (var i = 0; i < _requests.length; ++i)
+        {
+            var request = _requests[i];
+            this._debug('Aborting request', request);
+            if (request.xhr)
+            {
+                request.xhr.abort();
+            }
+        }
+        if (_metaConnectRequest)
+        {
+            this._debug('Aborting metaConnect request', _metaConnectRequest);
+            if (_metaConnectRequest.xhr)
+            {
+                _metaConnectRequest.xhr.abort();
+            }
+        }
+        this.reset();
+    };
+
+    _self.reset = function()
+    {
+        _super.reset();
+        _metaConnectRequest = null;
+        _requests = [];
+        _envelopes = [];
+    };
+
+    return _self;
+};
+
+org.cometd.LongPollingTransport = function()
+{
+    var _super = new org.cometd.RequestTransport();
+    var _self = org.cometd.Transport.derive(_super);
+    // By default, support cross domain
+    var _supportsCrossDomain = true;
+
+    _self.accept = function(version, crossDomain, url)
+    {
+        return _supportsCrossDomain || !crossDomain;
+    };
+
+    _self.xhrSend = function(packet)
+    {
+        throw 'Abstract';
+    };
+
+    _self.transportSend = function(envelope, request)
+    {
+        this._debug('Transport', this.getType(), 'sending request', request.id, 'envelope', envelope);
+
+        var self = this;
+        try
+        {
+            var sameStack = true;
+            request.xhr = this.xhrSend({
+                transport: this,
+                url: envelope.url,
+                sync: envelope.sync,
+                headers: this.getConfiguration().requestHeaders,
+                body: org.cometd.JSON.toJSON(envelope.messages),
+                onSuccess: function(response)
+                {
+                    self._debug('Transport', self.getType(), 'received response', response);
+                    var success = false;
+                    try
+                    {
+                        var received = self.convertToMessages(response);
+                        if (received.length === 0)
+                        {
+                            _supportsCrossDomain = false;
+                            self.transportFailure(envelope, request, 'no response', null);
+                        }
+                        else
+                        {
+                            success = true;
+                            self.transportSuccess(envelope, request, received);
+                        }
+                    }
+                    catch(x)
+                    {
+                        self._debug(x);
+                        if (!success)
+                        {
+                            _supportsCrossDomain = false;
+                            self.transportFailure(envelope, request, 'bad response', x);
+                        }
+                    }
+                },
+                onError: function(reason, exception)
+                {
+                    _supportsCrossDomain = false;
+                    if (sameStack)
+                    {
+                        // Keep the semantic of calling response callbacks asynchronously after the request
+                        self.setTimeout(function()
+                        {
+                            self.transportFailure(envelope, request, reason, exception);
+                        }, 0);
+                    }
+                    else
+                    {
+                        self.transportFailure(envelope, request, reason, exception);
+                    }
+                }
+            });
+            sameStack = false;
+        }
+        catch (x)
+        {
+            _supportsCrossDomain = false;
+            // Keep the semantic of calling response callbacks asynchronously after the request
+            this.setTimeout(function()
+            {
+                self.transportFailure(envelope, request, 'error', x);
+            }, 0);
+        }
+    };
+
+    _self.reset = function()
+    {
+        _super.reset();
+        _supportsCrossDomain = true;
+    };
+
+    return _self;
+};
+
+org.cometd.CallbackPollingTransport = function()
+{
+    var _super = new org.cometd.RequestTransport();
+    var _self = org.cometd.Transport.derive(_super);
+    var _maxLength = 2000;
+
+    _self.accept = function(version, crossDomain, url)
+    {
+        return true;
+    };
+
+    _self.jsonpSend = function(packet)
+    {
+        throw 'Abstract';
+    };
+
+    _self.transportSend = function(envelope, request)
+    {
+        var self = this;
+
+        // Microsoft Internet Explorer has a 2083 URL max length
+        // We must ensure that we stay within that length
+        var start = 0;
+        var length = envelope.messages.length;
+        var lengths = [];
+        while (length > 0)
+        {
+            // Encode the messages because all brackets, quotes, commas, colons, etc
+            // present in the JSON will be URL encoded, taking many more characters
+            var json = org.cometd.JSON.toJSON(envelope.messages.slice(start, start + length));
+            var urlLength = envelope.url.length + encodeURI(json).length;
+
+            // Let's stay on the safe side and use 2000 instead of 2083
+            // also because we did not count few characters among which
+            // the parameter name 'message' and the parameter 'jsonp',
+            // which sum up to about 50 chars
+            if (urlLength > _maxLength)
+            {
+                if (length === 1)
+                {
+                    var x = 'Bayeux message too big (' + urlLength + ' bytes, max is ' + _maxLength + ') ' +
+                            'for transport ' + this.getType();
+                    // Keep the semantic of calling response callbacks asynchronously after the request
+                    this.setTimeout(function()
+                    {
+                        self.transportFailure(envelope, request, 'error', x);
+                    }, 0);
+                    return;
+                }
+
+                --length;
+                continue;
+            }
+
+            lengths.push(length);
+            start += length;
+            length = envelope.messages.length - start;
+        }
+
+        // Here we are sure that the messages can be sent within the URL limit
+
+        var envelopeToSend = envelope;
+        if (lengths.length > 1)
+        {
+            var begin = 0;
+            var end = lengths[0];
+            this._debug('Transport', this.getType(), 'split', envelope.messages.length, 'messages into', lengths.join(' + '));
+            envelopeToSend = this._mixin(false, {}, envelope);
+            envelopeToSend.messages = envelope.messages.slice(begin, end);
+            envelopeToSend.onSuccess = envelope.onSuccess;
+            envelopeToSend.onFailure = envelope.onFailure;
+
+            for (var i = 1; i < lengths.length; ++i)
+            {
+                var nextEnvelope = this._mixin(false, {}, envelope);
+                begin = end;
+                end += lengths[i];
+                nextEnvelope.messages = envelope.messages.slice(begin, end);
+                nextEnvelope.onSuccess = envelope.onSuccess;
+                nextEnvelope.onFailure = envelope.onFailure;
+                this.send(nextEnvelope, request.metaConnect);
+            }
+        }
+
+        this._debug('Transport', this.getType(), 'sending request', request.id, 'envelope', envelopeToSend);
+
+        try
+        {
+            var sameStack = true;
+            this.jsonpSend({
+                transport: this,
+                url: envelopeToSend.url,
+                sync: envelopeToSend.sync,
+                headers: this.getConfiguration().requestHeaders,
+                body: org.cometd.JSON.toJSON(envelopeToSend.messages),
+                onSuccess: function(responses)
+                {
+                    var success = false;
+                    try
+                    {
+                        var received = self.convertToMessages(responses);
+                        if (received.length === 0)
+                        {
+                            self.transportFailure(envelopeToSend, request, 'no response');
+                        }
+                        else
+                        {
+                            success=true;
+                            self.transportSuccess(envelopeToSend, request, received);
+                        }
+                    }
+                    catch (x)
+                    {
+                        self._debug(x);
+                        if (!success)
+                        {
+                            self.transportFailure(envelopeToSend, request, 'bad response', x);
+                        }
+                    }
+                },
+                onError: function(reason, exception)
+                {
+                    if (sameStack)
+                    {
+                        // Keep the semantic of calling response callbacks asynchronously after the request
+                        self.setTimeout(function()
+                        {
+                            self.transportFailure(envelopeToSend, request, reason, exception);
+                        }, 0);
+                    }
+                    else
+                    {
+                        self.transportFailure(envelopeToSend, request, reason, exception);
+                    }
+                }
+            });
+            sameStack = false;
+        }
+        catch (xx)
+        {
+            // Keep the semantic of calling response callbacks asynchronously after the request
+            this.setTimeout(function()
+            {
+                self.transportFailure(envelopeToSend, request, 'error', xx);
+            }, 0);
+        }
+    };
+
+    return _self;
+};
+
+org.cometd.WebSocketTransport = function()
+{
+    var _super = new org.cometd.Transport();
+    var _self = org.cometd.Transport.derive(_super);
+    var _cometd;
+    // By default, support WebSocket
+    var _supportsWebSocket = true;
+    // Whether we were able to establish a WebSocket connection
+    var _webSocketSupported = false;
+    // Envelopes that have been sent
+    var _envelopes = {};
+    // Timeouts for messages that have been sent
+    var _timeouts = {};
+    var _webSocket = null;
+    var _opened = false;
+    var _connected = false;
+    var _successCallback;
+
+    function _websocketConnect()
+    {
+        // Mangle the URL, changing the scheme from 'http' to 'ws'
+        var url = _cometd.getURL().replace(/^http/, 'ws');
+        this._debug('Transport', this.getType(), 'connecting to URL', url);
+
+        var self = this;
+        var connectTimer = null;
+
+        var connectTimeout = _cometd.getConfiguration().connectTimeout;
+        if (connectTimeout > 0)
+        {
+            connectTimer = this.setTimeout(function()
+            {
+                connectTimer = null;
+                if (!_opened)
+                {
+                    self._debug('Transport', self.getType(), 'timed out while connecting to URL', url, ':', connectTimeout, 'ms');
+                    self.onClose(1002, 'Connect Timeout');
+                }
+            }, connectTimeout);
+        }
+
+        var webSocket = new org.cometd.WebSocket(url);
+        webSocket.onopen = function()
+        {
+            self._debug('WebSocket opened', webSocket);
+            if (connectTimer)
+            {
+                self.clearTimeout(connectTimer);
+                connectTimer = null;
+            }
+            if (webSocket !== _webSocket)
+            {
+                // It's possible that the onopen callback is invoked
+                // with a delay so that we have already reconnected
+                self._debug('Ignoring open event, WebSocket', _webSocket);
+                return;
+            }
+            self.onOpen();
+        };
+        webSocket.onclose = function(event)
+        {
+            var code = event ? event.code : 1000;
+            var reason = event ? event.reason : undefined;
+            self._debug('WebSocket closed', code, '/', reason, webSocket);
+            if (connectTimer)
+            {
+                self.clearTimeout(connectTimer);
+                connectTimer = null;
+            }
+            if (webSocket !== _webSocket)
+            {
+                // The onclose callback may be invoked when the server sends
+                // the close message reply, but after we have already reconnected
+                self._debug('Ignoring close event, WebSocket', _webSocket);
+                return;
+            }
+            self.onClose(code, reason);
+        };
+        webSocket.onerror = function()
+        {
+            webSocket.onclose({ code: 1002 });
+        };
+        webSocket.onmessage = function(message)
+        {
+            self._debug('WebSocket message', message, webSocket);
+            if (webSocket !== _webSocket)
+            {
+                self._debug('Ignoring message event, WebSocket', _webSocket);
+                return;
+            }
+            self.onMessage(message);
+        };
+
+        _webSocket = webSocket;
+        this._debug('Transport', this.getType(), 'configured callbacks on', webSocket);
+    }
+
+    function _webSocketSend(envelope, metaConnect)
+    {
+        var json = org.cometd.JSON.toJSON(envelope.messages);
+
+        _webSocket.send(json);
+        this._debug('Transport', this.getType(), 'sent', envelope, 'metaConnect =', metaConnect);
+
+        // Manage the timeout waiting for the response
+        var maxDelay = this.getConfiguration().maxNetworkDelay;
+        var delay = maxDelay;
+        if (metaConnect)
+        {
+            delay += this.getAdvice().timeout;
+            _connected = true;
+        }
+
+        var messageIds = [];
+        for (var i = 0; i < envelope.messages.length; ++i)
+        {
+            var message = envelope.messages[i];
+            if (message.id)
+            {
+                messageIds.push(message.id);
+                var self = this;
+                _timeouts[message.id] = this.setTimeout(function()
+                {
+                    if (_webSocket)
+                    {
+                        _webSocket.close(1000, 'Timeout');
+                    }
+                }, delay);
+            }
+        }
+
+        this._debug('Transport', this.getType(), 'waiting at most', delay, 'ms for messages', messageIds, 'maxNetworkDelay', maxDelay, ', timeouts:', _timeouts);
+    }
+
+    function _send(envelope, metaConnect)
+    {
+        try
+        {
+            if (_webSocket === null)
+            {
+                _websocketConnect.call(this);
+            }
+            // We may have a non-null _webSocket, but not be open yet so
+            // to avoid out of order deliveries, we check if we are open
+            else if (_opened)
+            {
+                _webSocketSend.call(this, envelope, metaConnect);
+            }
+        }
+        catch (x)
+        {
+            // Keep the semantic of calling response callbacks asynchronously after the request
+            this.setTimeout(function()
+            {
+                envelope.onFailure(_webSocket, envelope.messages, 'error', x);
+            }, 0);
+        }
+    }
+
+    _self.onOpen = function()
+    {
+        this._debug('Transport', this.getType(), 'opened', _webSocket);
+        _opened = true;
+        _webSocketSupported = true;
+
+        this._debug('Sending pending messages', _envelopes);
+        for (var key in _envelopes)
+        {
+            var element = _envelopes[key];
+            var envelope = element[0];
+            var metaConnect = element[1];
+            // Store the success callback, which is independent from the envelope,
+            // so that it can be used to notify arrival of messages.
+            _successCallback = envelope.onSuccess;
+            _webSocketSend.call(this, envelope, metaConnect);
+        }
+    };
+
+    _self.onMessage = function(wsMessage)
+    {
+        this._debug('Transport', this.getType(), 'received websocket message', wsMessage, _webSocket);
+
+        var close = false;
+        var messages = this.convertToMessages(wsMessage.data);
+        var messageIds = [];
+        for (var i = 0; i < messages.length; ++i)
+        {
+            var message = messages[i];
+
+            // Detect if the message is a response to a request we made.
+            // If it's a meta message, for sure it's a response;
+            // otherwise it's a publish message and publish responses lack the data field
+            if (/^\/meta\//.test(message.channel) || message.data === undefined)
+            {
+                if (message.id)
+                {
+                    messageIds.push(message.id);
+
+                    var timeout = _timeouts[message.id];
+                    if (timeout)
+                    {
+                        this.clearTimeout(timeout);
+                        delete _timeouts[message.id];
+                        this._debug('Transport', this.getType(), 'removed timeout for message', message.id, ', timeouts', _timeouts);
+                    }
+                }
+            }
+
+            if ('/meta/connect' === message.channel)
+            {
+                _connected = false;
+            }
+            if ('/meta/disconnect' === message.channel && !_connected)
+            {
+                close = true;
+            }
+        }
+
+        // Remove the envelope corresponding to the messages
+        var removed = false;
+        for (var j = 0; j < messageIds.length; ++j)
+        {
+            var id = messageIds[j];
+            for (var key in _envelopes)
+            {
+                var ids = key.split(',');
+                var index = org.cometd.Utils.inArray(id, ids);
+                if (index >= 0)
+                {
+                    removed = true;
+                    ids.splice(index, 1);
+                    var envelope = _envelopes[key][0];
+                    var metaConnect = _envelopes[key][1];
+                    delete _envelopes[key];
+                    if (ids.length > 0)
+                    {
+                        _envelopes[ids.join(',')] = [envelope, metaConnect];
+                    }
+                    break;
+                }
+            }
+        }
+        if (removed)
+        {
+            this._debug('Transport', this.getType(), 'removed envelope, envelopes', _envelopes);
+        }
+
+        _successCallback.call(this, messages);
+
+        if (close)
+        {
+            _webSocket.close(1000, 'Disconnect');
+        }
+    };
+
+    _self.onClose = function(code, reason)
+    {
+        this._debug('Transport', this.getType(), 'closed', code, reason, _webSocket);
+
+        // Remember if we were able to connect
+        // This close event could be due to server shutdown, and if it restarts we want to try websocket again
+        _supportsWebSocket = _webSocketSupported;
+
+        for (var id in _timeouts)
+        {
+            this.clearTimeout(_timeouts[id]);
+        }
+        _timeouts = {};
+
+        for (var key in _envelopes)
+        {
+            var envelope = _envelopes[key][0];
+            var metaConnect = _envelopes[key][1];
+            if (metaConnect)
+            {
+                _connected = false;
+            }
+            envelope.onFailure(_webSocket, envelope.messages, 'closed ' + code + '/' + reason);
+        }
+        _envelopes = {};
+
+        if (_webSocket !== null && _opened)
+        {
+            _webSocket.close(1000, 'Close');
+        }
+        _opened = false;
+        _webSocket = null;
+    };
+
+    _self.registered = function(type, cometd)
+    {
+        _super.registered(type, cometd);
+        _cometd = cometd;
+    };
+
+    _self.accept = function(version, crossDomain, url)
+    {
+        // Using !! to return a boolean (and not the WebSocket object)
+        return _supportsWebSocket && !!org.cometd.WebSocket && _cometd.websocketEnabled !== false;
+    };
+
+    _self.send = function(envelope, metaConnect)
+    {
+        this._debug('Transport', this.getType(), 'sending', envelope, 'metaConnect =', metaConnect);
+
+        // Store the envelope in any case; if the websocket cannot be opened, we fail it in close()
+        var messageIds = [];
+        for (var i = 0; i < envelope.messages.length; ++i)
+        {
+            var message = envelope.messages[i];
+            if (message.id)
+            {
+                messageIds.push(message.id);
+            }
+        }
+        _envelopes[messageIds.join(',')] = [envelope, metaConnect];
+        this._debug('Transport', this.getType(), 'stored envelope, envelopes', _envelopes);
+
+        _send.call(this, envelope, metaConnect);
+    };
+
+    _self.reset = function()
+    {
+        _super.reset();
+        if (_webSocket !== null && _opened)
+        {
+            _webSocket.close(1000, 'Reset');
+        }
+        _supportsWebSocket = true;
+        _webSocketSupported = false;
+        _timeouts = {};
+        _envelopes = {};
+        _webSocket = null;
+        _opened = false;
+        _successCallback = null;
+    };
+
+    return _self;
+};
+
+/**
+ * The constructor for a Cometd object, identified by an optional name.
+ * The default name is the string 'default'.
+ * In the rare case a page needs more than one Bayeux conversation,
+ * a new instance can be created via:
+ * <pre>
+ * var bayeuxUrl2 = ...;
+ *
+ * // Dojo style
+ * var cometd2 = new dojox.Cometd('another_optional_name');
+ *
+ * // jQuery style
+ * var cometd2 = new $.Cometd('another_optional_name');
+ *
+ * cometd2.init({url: bayeuxUrl2});
+ * </pre>
+ * @param name the optional name of this cometd object
+ */
+// IMPLEMENTATION NOTES:
+// Be very careful in not changing the function order and pass this file every time through JSLint (http://jslint.com)
+// The only implied globals must be "dojo", "org" and "window", and check that there are no "unused" warnings
+// Failing to pass JSLint may result in shrinkers/minifiers to create an unusable file.
+org.cometd.Cometd = function(name)
+{
+    var _cometd = this;
+    var _name = name || 'default';
+    var _crossDomain = false;
+    var _transports = new org.cometd.TransportRegistry();
+    var _transport;
+    var _status = 'disconnected';
+    var _messageId = 0;
+    var _clientId = null;
+    var _batch = 0;
+    var _messageQueue = [];
+    var _internalBatch = false;
+    var _listeners = {};
+    var _backoff = 0;
+    var _scheduledSend = null;
+    var _extensions = [];
+    var _advice = {};
+    var _handshakeProps;
+    var _reestablish = false;
+    var _connected = false;
+    var _config = {
+        connectTimeout: 0,
+        maxConnections: 2,
+        backoffIncrement: 1000,
+        maxBackoff: 60000,
+        logLevel: 'info',
+        reverseIncomingExtensions: true,
+        maxNetworkDelay: 10000,
+        requestHeaders: {},
+        appendMessageTypeToURL: true,
+        autoBatch: false,
+        advice: {
+            timeout: 60000,
+            interval: 0,
+            reconnect: 'retry'
+        }
+    };
+
+    /**
+     * Mixes in the given objects into the target object by copying the properties.
+     * @param deep if the copy must be deep
+     * @param target the target object
+     * @param objects the objects whose properties are copied into the target
+     */
+    this._mixin = function(deep, target, objects)
+    {
+        var result = target || {};
+
+        // Skip first 2 parameters (deep and target), and loop over the others
+        for (var i = 2; i < arguments.length; ++i)
+        {
+            var object = arguments[i];
+
+            if (object === undefined || object === null)
+            {
+                continue;
+            }
+
+            for (var propName in object)
+            {
+                var prop = object[propName];
+                var targ = result[propName];
+
+                // Avoid infinite loops
+                if (prop === target)
+                {
+                    continue;
+                }
+                // Do not mixin undefined values
+                if (prop === undefined)
+                {
+                    continue;
+                }
+
+                if (deep && typeof prop === 'object' && prop !== null)
+                {
+                    if (prop instanceof Array)
+                    {
+                        result[propName] = this._mixin(deep, targ instanceof Array ? targ : [], prop);
+                    }
+                    else
+                    {
+                        var source = typeof targ === 'object' && !(targ instanceof Array) ? targ : {};
+                        result[propName] = this._mixin(deep, source, prop);
+                    }
+                }
+                else
+                {
+                    result[propName] = prop;
+                }
+            }
+        }
+
+        return result;
+    };
+
+    function _isString(value)
+    {
+        return org.cometd.Utils.isString(value);
+    }
+
+    function _isFunction(value)
+    {
+        if (value === undefined || value === null)
+        {
+            return false;
+        }
+        return typeof value === 'function';
+    }
+
+    function _log(level, args)
+    {
+        if (window.console)
+        {
+            var logger = window.console[level];
+            if (_isFunction(logger))
+            {
+                logger.apply(window.console, args);
+            }
+        }
+    }
+
+    this._warn = function()
+    {
+        _log('warn', arguments);
+    };
+
+    this._info = function()
+    {
+        if (_config.logLevel !== 'warn')
+        {
+            _log('info', arguments);
+        }
+    };
+
+    this._debug = function()
+    {
+        if (_config.logLevel === 'debug')
+        {
+            _log('debug', arguments);
+        }
+    };
+
+    /**
+     * Returns whether the given hostAndPort is cross domain.
+     * The default implementation checks against window.location.host
+     * but this function can be overridden to make it work in non-browser
+     * environments.
+     *
+     * @param hostAndPort the host and port in format host:port
+     * @return whether the given hostAndPort is cross domain
+     */
+    this._isCrossDomain = function(hostAndPort)
+    {
+        return hostAndPort && hostAndPort !== window.location.host;
+    };
+
+    function _configure(configuration)
+    {
+        _cometd._debug('Configuring cometd object with', configuration);
+        // Support old style param, where only the Bayeux server URL was passed
+        if (_isString(configuration))
+        {
+            configuration = { url: configuration };
+        }
+        if (!configuration)
+        {
+            configuration = {};
+        }
+
+        _config = _cometd._mixin(false, _config, configuration);
+
+        if (!_config.url)
+        {
+            throw 'Missing required configuration parameter \'url\' specifying the Bayeux server URL';
+        }
+
+        // Check if we're cross domain
+        // [1] = protocol://, [2] = host:port, [3] = host, [4] = IPv6_host, [5] = IPv4_host, [6] = :port, [7] = port, [8] = uri, [9] = rest
+        var urlParts = /(^https?:\/\/)?(((\[[^\]]+\])|([^:\/\?#]+))(:(\d+))?)?([^\?#]*)(.*)?/.exec(_config.url);
+        var hostAndPort = urlParts[2];
+        var uri = urlParts[8];
+        var afterURI = urlParts[9];
+        _crossDomain = _cometd._isCrossDomain(hostAndPort);
+
+        // Check if appending extra path is supported
+        if (_config.appendMessageTypeToURL)
+        {
+            if (afterURI !== undefined && afterURI.length > 0)
+            {
+                _cometd._info('Appending message type to URI ' + uri + afterURI + ' is not supported, disabling \'appendMessageTypeToURL\' configuration');
+                _config.appendMessageTypeToURL = false;
+            }
+            else
+            {
+                var uriSegments = uri.split('/');
+                var lastSegmentIndex = uriSegments.length - 1;
+                if (uri.match(/\/$/))
+                {
+                    lastSegmentIndex -= 1;
+                }
+                if (uriSegments[lastSegmentIndex].indexOf('.') >= 0)
+                {
+                    // Very likely the CometD servlet's URL pattern is mapped to an extension, such as *.cometd
+                    // It will be difficult to add the extra path in this case
+                    _cometd._info('Appending message type to URI ' + uri + ' is not supported, disabling \'appendMessageTypeToURL\' configuration');
+                    _config.appendMessageTypeToURL = false;
+                }
+            }
+        }
+    }
+
+    function _clearSubscriptions()
+    {
+        for (var channel in _listeners)
+        {
+            var subscriptions = _listeners[channel];
+            for (var i = 0; i < subscriptions.length; ++i)
+            {
+                var subscription = subscriptions[i];
+                if (subscription && !subscription.listener)
+                {
+                    delete subscriptions[i];
+                    _cometd._debug('Removed subscription', subscription, 'for channel', channel);
+                }
+            }
+        }
+    }
+
+    function _setStatus(newStatus)
+    {
+        if (_status !== newStatus)
+        {
+            _cometd._debug('Status', _status, '->', newStatus);
+            _status = newStatus;
+        }
+    }
+
+    function _isDisconnected()
+    {
+        return _status === 'disconnecting' || _status === 'disconnected';
+    }
+
+    function _nextMessageId()
+    {
+        return ++_messageId;
+    }
+
+    function _applyExtension(scope, callback, name, message, outgoing)
+    {
+        try
+        {
+            return callback.call(scope, message);
+        }
+        catch (x)
+        {
+            _cometd._debug('Exception during execution of extension', name, x);
+            var exceptionCallback = _cometd.onExtensionException;
+            if (_isFunction(exceptionCallback))
+            {
+                _cometd._debug('Invoking extension exception callback', name, x);
+                try
+                {
+                    exceptionCallback.call(_cometd, x, name, outgoing, message);
+                }
+                catch(xx)
+                {
+                    _cometd._info('Exception during execution of exception callback in extension', name, xx);
+                }
+            }
+            return message;
+        }
+    }
+
+    function _applyIncomingExtensions(message)
+    {
+        for (var i = 0; i < _extensions.length; ++i)
+        {
+            if (message === undefined || message === null)
+            {
+                break;
+            }
+
+            var index = _config.reverseIncomingExtensions ? _extensions.length - 1 - i : i;
+            var extension = _extensions[index];
+            var callback = extension.extension.incoming;
+            if (_isFunction(callback))
+            {
+                var result = _applyExtension(extension.extension, callback, extension.name, message, false);
+                message = result === undefined ? message : result;
+            }
+        }
+        return message;
+    }
+
+    function _applyOutgoingExtensions(message)
+    {
+        for (var i = 0; i < _extensions.length; ++i)
+        {
+            if (message === undefined || message === null)
+            {
+                break;
+            }
+
+            var extension = _extensions[i];
+            var callback = extension.extension.outgoing;
+            if (_isFunction(callback))
+            {
+                var result = _applyExtension(extension.extension, callback, extension.name, message, true);
+                message = result === undefined ? message : result;
+            }
+        }
+        return message;
+    }
+
+    function _notify(channel, message)
+    {
+        var subscriptions = _listeners[channel];
+        if (subscriptions && subscriptions.length > 0)
+        {
+            for (var i = 0; i < subscriptions.length; ++i)
+            {
+                var subscription = subscriptions[i];
+                // Subscriptions may come and go, so the array may have 'holes'
+                if (subscription)
+                {
+                    try
+                    {
+                        subscription.callback.call(subscription.scope, message);
+                    }
+                    catch (x)
+                    {
+                        _cometd._debug('Exception during notification', subscription, message, x);
+                        var listenerCallback = _cometd.onListenerException;
+                        if (_isFunction(listenerCallback))
+                        {
+                            _cometd._debug('Invoking listener exception callback', subscription, x);
+                            try
+                            {
+                                listenerCallback.call(_cometd, x, subscription.handle, subscription.listener, message);
+                            }
+                            catch (xx)
+                            {
+                                _cometd._info('Exception during execution of listener callback', subscription, xx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function _notifyListeners(channel, message)
+    {
+        // Notify direct listeners
+        _notify(channel, message);
+
+        // Notify the globbing listeners
+        var channelParts = channel.split('/');
+        var last = channelParts.length - 1;
+        for (var i = last; i > 0; --i)
+        {
+            var channelPart = channelParts.slice(0, i).join('/') + '/*';
+            // We don't want to notify /foo/* if the channel is /foo/bar/baz,
+            // so we stop at the first non recursive globbing
+            if (i === last)
+            {
+                _notify(channelPart, message);
+            }
+            // Add the recursive globber and notify
+            channelPart += '*';
+            _notify(channelPart, message);
+        }
+    }
+
+    function _cancelDelayedSend()
+    {
+        if (_scheduledSend !== null)
+        {
+            org.cometd.Utils.clearTimeout(_scheduledSend);
+        }
+        _scheduledSend = null;
+    }
+
+    function _delayedSend(operation)
+    {
+        _cancelDelayedSend();
+        var delay = _advice.interval + _backoff;
+        _cometd._debug('Function scheduled in', delay, 'ms, interval =', _advice.interval, 'backoff =', _backoff, operation);
+        _scheduledSend = org.cometd.Utils.setTimeout(_cometd, operation, delay);
+    }
+
+    // Needed to break cyclic dependencies between function definitions
+    var _handleMessages;
+    var _handleFailure;
+
+    /**
+     * Delivers the messages to the CometD server
+     * @param messages the array of messages to send
+     * @param longpoll true if this send is a long poll
+     */
+    function _send(sync, messages, longpoll, extraPath)
+    {
+        // We must be sure that the messages have a clientId.
+        // This is not guaranteed since the handshake may take time to return
+        // (and hence the clientId is not known yet) and the application
+        // may create other messages.
+        for (var i = 0; i < messages.length; ++i)
+        {
+            var message = messages[i];
+            message.id = '' + _nextMessageId();
+            if (_clientId)
+            {
+                message.clientId = _clientId;
+            }
+            message = _applyOutgoingExtensions(message);
+            if (message !== undefined && message !== null)
+            {
+                messages[i] = message;
+            }
+            else
+            {
+                messages.splice(i--, 1);
+            }
+        }
+        if (messages.length === 0)
+        {
+            return;
+        }
+
+        var url = _config.url;
+        if (_config.appendMessageTypeToURL)
+        {
+            // If url does not end with '/', then append it
+            if (!url.match(/\/$/))
+            {
+                url = url + '/';
+            }
+            if (extraPath)
+            {
+                url = url + extraPath;
+            }
+        }
+
+        var envelope = {
+            url: url,
+            sync: sync,
+            messages: messages,
+            onSuccess: function(rcvdMessages)
+            {
+                try
+                {
+                    _handleMessages.call(_cometd, rcvdMessages);
+                }
+                catch (x)
+                {
+                    _cometd._debug('Exception during handling of messages', x);
+                }
+            },
+            onFailure: function(conduit, messages, reason, exception)
+            {
+                try
+                {
+                    _handleFailure.call(_cometd, conduit, messages, reason, exception);
+                }
+                catch (x)
+                {
+                    _cometd._debug('Exception during handling of failure', x);
+                }
+            }
+        };
+        _cometd._debug('Send', envelope);
+        _transport.send(envelope, longpoll);
+    }
+
+    function _queueSend(message)
+    {
+        if (_batch > 0 || _internalBatch === true)
+        {
+            _messageQueue.push(message);
+        }
+        else
+        {
+            _send(false, [message], false);
+        }
+    }
+
+    /**
+     * Sends a complete bayeux message.
+     * This method is exposed as a public so that extensions may use it
+     * to send bayeux message directly, for example in case of re-sending
+     * messages that have already been sent but that for some reason must
+     * be resent.
+     */
+    this.send = _queueSend;
+
+    function _resetBackoff()
+    {
+        _backoff = 0;
+    }
+
+    function _increaseBackoff()
+    {
+        if (_backoff < _config.maxBackoff)
+        {
+            _backoff += _config.backoffIncrement;
+        }
+    }
+
+    /**
+     * Starts a the batch of messages to be sent in a single request.
+     * @see #_endBatch(sendMessages)
+     */
+    function _startBatch()
+    {
+        ++_batch;
+    }
+
+    function _flushBatch()
+    {
+        var messages = _messageQueue;
+        _messageQueue = [];
+        if (messages.length > 0)
+        {
+            _send(false, messages, false);
+        }
+    }
+
+    /**
+     * Ends the batch of messages to be sent in a single request,
+     * optionally sending messages present in the message queue depending
+     * on the given argument.
+     * @see #_startBatch()
+     */
+    function _endBatch()
+    {
+        --_batch;
+        if (_batch < 0)
+        {
+            throw 'Calls to startBatch() and endBatch() are not paired';
+        }
+
+        if (_batch === 0 && !_isDisconnected() && !_internalBatch)
+        {
+            _flushBatch();
+        }
+    }
+
+    /**
+     * Sends the connect message
+     */
+    function _connect()
+    {
+        if (!_isDisconnected())
+        {
+            var message = {
+                channel: '/meta/connect',
+                connectionType: _transport.getType()
+            };
+
+            // In case of reload or temporary loss of connection
+            // we want the next successful connect to return immediately
+            // instead of being held by the server, so that connect listeners
+            // can be notified that the connection has been re-established
+            if (!_connected)
+            {
+                message.advice = { timeout: 0 };
+            }
+
+            _setStatus('connecting');
+            _cometd._debug('Connect sent', message);
+            _send(false, [message], true, 'connect');
+            _setStatus('connected');
+        }
+    }
+
+    function _delayedConnect()
+    {
+        _setStatus('connecting');
+        _delayedSend(function()
+        {
+            _connect();
+        });
+    }
+
+    function _updateAdvice(newAdvice)
+    {
+        if (newAdvice)
+        {
+            _advice = _cometd._mixin(false, {}, _config.advice, newAdvice);
+            _cometd._debug('New advice', _advice);
+        }
+    }
+
+    function _disconnect(abort)
+    {
+        _cancelDelayedSend();
+        if (abort)
+        {
+            _transport.abort();
+        }
+        _clientId = null;
+        _setStatus('disconnected');
+        _batch = 0;
+        _resetBackoff();
+
+        // Fail any existing queued message
+        if (_messageQueue.length > 0)
+        {
+            _handleFailure.call(_cometd, undefined, _messageQueue, 'error', 'Disconnected');
+            _messageQueue = [];
+        }
+    }
+
+    /**
+     * Sends the initial handshake message
+     */
+    function _handshake(handshakeProps)
+    {
+        _clientId = null;
+
+        _clearSubscriptions();
+
+        // Reset the transports if we're not retrying the handshake
+        if (_isDisconnected())
+        {
+            _transports.reset();
+            _updateAdvice(_config.advice);
+        }
+        else
+        {
+            // We are retrying the handshake, either because another handshake failed
+            // and we're backing off, or because the server timed us out and asks us to
+            // re-handshake: in both cases, make sure that if the handshake succeeds
+            // the next action is a connect.
+            _updateAdvice(_cometd._mixin(false, _advice, {reconnect: 'retry'}));
+        }
+
+        _batch = 0;
+
+        // Mark the start of an internal batch.
+        // This is needed because handshake and connect are async.
+        // It may happen that the application calls init() then subscribe()
+        // and the subscribe message is sent before the connect message, if
+        // the subscribe message is not held until the connect message is sent.
+        // So here we start a batch to hold temporarily any message until
+        // the connection is fully established.
+        _internalBatch = true;
+
+        // Save the properties provided by the user, so that
+        // we can reuse them during automatic re-handshake
+        _handshakeProps = handshakeProps;
+
+        var version = '1.0';
+
+        // Figure out the transports to send to the server
+        var transportTypes = _transports.findTransportTypes(version, _crossDomain, _config.url);
+
+        var bayeuxMessage = {
+            version: version,
+            minimumVersion: '0.9',
+            channel: '/meta/handshake',
+            supportedConnectionTypes: transportTypes,
+            advice: {
+                timeout: _advice.timeout,
+                interval: _advice.interval
+            }
+        };
+        // Do not allow the user to mess with the required properties,
+        // so merge first the user properties and *then* the bayeux message
+        var message = _cometd._mixin(false, {}, _handshakeProps, bayeuxMessage);
+
+        // Pick up the first available transport as initial transport
+        // since we don't know if the server supports it
+        _transport = _transports.negotiateTransport(transportTypes, version, _crossDomain, _config.url);
+        _cometd._debug('Initial transport is', _transport.getType());
+
+        // We started a batch to hold the application messages,
+        // so here we must bypass it and send immediately.
+        _setStatus('handshaking');
+        _cometd._debug('Handshake sent', message);
+        _send(false, [message], false, 'handshake');
+    }
+
+    function _delayedHandshake()
+    {
+        _setStatus('handshaking');
+
+        // We will call _handshake() which will reset _clientId, but we want to avoid
+        // that between the end of this method and the call to _handshake() someone may
+        // call publish() (or other methods that call _queueSend()).
+        _internalBatch = true;
+
+        _delayedSend(function()
+        {
+            _handshake(_handshakeProps);
+        });
+    }
+
+    function _failHandshake(message)
+    {
+        _notifyListeners('/meta/handshake', message);
+        _notifyListeners('/meta/unsuccessful', message);
+
+        // Only try again if we haven't been disconnected and
+        // the advice permits us to retry the handshake
+        var retry = !_isDisconnected() && _advice.reconnect !== 'none';
+        if (retry)
+        {
+            _increaseBackoff();
+            _delayedHandshake();
+        }
+        else
+        {
+            _disconnect(false);
+        }
+    }
+
+    function _handshakeResponse(message)
+    {
+        if (message.successful)
+        {
+            // Save clientId, figure out transport, then follow the advice to connect
+            _clientId = message.clientId;
+
+            var newTransport = _transports.negotiateTransport(message.supportedConnectionTypes, message.version, _crossDomain, _config.url);
+            if (newTransport === null)
+            {
+                throw 'Could not negotiate transport with server; client ' +
+                      _transports.findTransportTypes(message.version, _crossDomain, _config.url) +
+                      ', server ' + message.supportedConnectionTypes;
+            }
+            else if (_transport !== newTransport)
+            {
+                _cometd._debug('Transport', _transport, '->', newTransport);
+                _transport = newTransport;
+            }
+
+            // End the internal batch and allow held messages from the application
+            // to go to the server (see _handshake() where we start the internal batch).
+            _internalBatch = false;
+            _flushBatch();
+
+            // Here the new transport is in place, as well as the clientId, so
+            // the listeners can perform a publish() if they want.
+            // Notify the listeners before the connect below.
+            message.reestablish = _reestablish;
+            _reestablish = true;
+            _notifyListeners('/meta/handshake', message);
+
+            var action = _isDisconnected() ? 'none' : _advice.reconnect;
+            switch (action)
+            {
+                case 'retry':
+                    _resetBackoff();
+                    _delayedConnect();
+                    break;
+                case 'none':
+                    _disconnect(false);
+                    break;
+                default:
+                    throw 'Unrecognized advice action ' + action;
+            }
+        }
+        else
+        {
+            _failHandshake(message);
+        }
+    }
+
+    function _handshakeFailure(xhr, message)
+    {
+        _failHandshake({
+            successful: false,
+            failure: true,
+            channel: '/meta/handshake',
+            request: message,
+            xhr: xhr,
+            advice: {
+                reconnect: 'retry',
+                interval: _backoff
+            }
+        });
+    }
+
+    function _failConnect(message)
+    {
+        // Notify the listeners after the status change but before the next action
+        _notifyListeners('/meta/connect', message);
+        _notifyListeners('/meta/unsuccessful', message);
+
+        // This may happen when the server crashed, the current clientId
+        // will be invalid, and the server will ask to handshake again
+        // Listeners can call disconnect(), so check the state after they run
+        var action = _isDisconnected() ? 'none' : _advice.reconnect;
+        switch (action)
+        {
+            case 'retry':
+                _delayedConnect();
+                _increaseBackoff();
+                break;
+            case 'handshake':
+                // The current transport may be failed (e.g. network disconnection)
+                // Reset the transports so the new handshake picks up the right one
+                _transports.reset();
+                _resetBackoff();
+                _delayedHandshake();
+                break;
+            case 'none':
+                _disconnect(false);
+                break;
+            default:
+                throw 'Unrecognized advice action' + action;
+        }
+    }
+
+    function _connectResponse(message)
+    {
+        _connected = message.successful;
+
+        if (_connected)
+        {
+            _notifyListeners('/meta/connect', message);
+
+            // Normally, the advice will say "reconnect: 'retry', interval: 0"
+            // and the server will hold the request, so when a response returns
+            // we immediately call the server again (long polling)
+            // Listeners can call disconnect(), so check the state after they run
+            var action = _isDisconnected() ? 'none' : _advice.reconnect;
+            switch (action)
+            {
+                case 'retry':
+                    _resetBackoff();
+                    _delayedConnect();
+                    break;
+                case 'none':
+                    _disconnect(false);
+                    break;
+                default:
+                    throw 'Unrecognized advice action ' + action;
+            }
+        }
+        else
+        {
+            _failConnect(message);
+        }
+    }
+
+    function _connectFailure(xhr, message)
+    {
+        _connected = false;
+        _failConnect({
+            successful: false,
+            failure: true,
+            channel: '/meta/connect',
+            request: message,
+            xhr: xhr,
+            advice: {
+                reconnect: 'retry',
+                interval: _backoff
+            }
+        });
+    }
+
+    function _failDisconnect(message)
+    {
+        _disconnect(true);
+        _notifyListeners('/meta/disconnect', message);
+        _notifyListeners('/meta/unsuccessful', message);
+    }
+
+    function _disconnectResponse(message)
+    {
+        if (message.successful)
+        {
+            _disconnect(false);
+            _notifyListeners('/meta/disconnect', message);
+        }
+        else
+        {
+            _failDisconnect(message);
+        }
+    }
+
+    function _disconnectFailure(xhr, message)
+    {
+        _failDisconnect({
+            successful: false,
+            failure: true,
+            channel: '/meta/disconnect',
+            request: message,
+            xhr: xhr,
+            advice: {
+                reconnect: 'none',
+                interval: 0
+            }
+        });
+    }
+
+    function _failSubscribe(message)
+    {
+        _notifyListeners('/meta/subscribe', message);
+        _notifyListeners('/meta/unsuccessful', message);
+    }
+
+    function _subscribeResponse(message)
+    {
+        if (message.successful)
+        {
+            _notifyListeners('/meta/subscribe', message);
+        }
+        else
+        {
+            _failSubscribe(message);
+        }
+    }
+
+    function _subscribeFailure(xhr, message)
+    {
+        _failSubscribe({
+            successful: false,
+            failure: true,
+            channel: '/meta/subscribe',
+            request: message,
+            xhr: xhr,
+            advice: {
+                reconnect: 'none',
+                interval: 0
+            }
+        });
+    }
+
+    function _failUnsubscribe(message)
+    {
+        _notifyListeners('/meta/unsubscribe', message);
+        _notifyListeners('/meta/unsuccessful', message);
+    }
+
+    function _unsubscribeResponse(message)
+    {
+        if (message.successful)
+        {
+            _notifyListeners('/meta/unsubscribe', message);
+        }
+        else
+        {
+            _failUnsubscribe(message);
+        }
+    }
+
+    function _unsubscribeFailure(xhr, message)
+    {
+        _failUnsubscribe({
+            successful: false,
+            failure: true,
+            channel: '/meta/unsubscribe',
+            request: message,
+            xhr: xhr,
+            advice: {
+                reconnect: 'none',
+                interval: 0
+            }
+        });
+    }
+
+    function _failMessage(message)
+    {
+        _notifyListeners('/meta/publish', message);
+        _notifyListeners('/meta/unsuccessful', message);
+    }
+
+    function _messageResponse(message)
+    {
+        if (message.successful === undefined)
+        {
+            if (message.data)
+            {
+                // It is a plain message, and not a bayeux meta message
+                _notifyListeners(message.channel, message);
+            }
+            else
+            {
+                _cometd._debug('Unknown message', message);
+            }
+        }
+        else
+        {
+            if (message.successful)
+            {
+                _notifyListeners('/meta/publish', message);
+            }
+            else
+            {
+                _failMessage(message);
+            }
+        }
+    }
+
+    function _messageFailure(xhr, message)
+    {
+        _failMessage({
+            successful: false,
+            failure: true,
+            channel: message.channel,
+            request: message,
+            xhr: xhr,
+            advice: {
+                reconnect: 'none',
+                interval: 0
+            }
+        });
+    }
+
+    function _receive(message)
+    {
+        message = _applyIncomingExtensions(message);
+        if (message === undefined || message === null)
+        {
+            return;
+        }
+
+        _updateAdvice(message.advice);
+
+        var channel = message.channel;
+        switch (channel)
+        {
+            case '/meta/handshake':
+                _handshakeResponse(message);
+                break;
+            case '/meta/connect':
+                _connectResponse(message);
+                break;
+            case '/meta/disconnect':
+                _disconnectResponse(message);
+                break;
+            case '/meta/subscribe':
+                _subscribeResponse(message);
+                break;
+            case '/meta/unsubscribe':
+                _unsubscribeResponse(message);
+                break;
+            default:
+                _messageResponse(message);
+                break;
+        }
+    }
+
+    /**
+     * Receives a message.
+     * This method is exposed as a public so that extensions may inject
+     * messages simulating that they had been received.
+     */
+    this.receive = _receive;
+
+    _handleMessages = function(rcvdMessages)
+    {
+        _cometd._debug('Received', rcvdMessages);
+
+        for (var i = 0; i < rcvdMessages.length; ++i)
+        {
+            var message = rcvdMessages[i];
+            _receive(message);
+        }
+    };
+
+    _handleFailure = function(conduit, messages, reason, exception)
+    {
+        _cometd._debug('handleFailure', conduit, messages, reason, exception);
+
+        for (var i = 0; i < messages.length; ++i)
+        {
+            var message = messages[i];
+            var channel = message.channel;
+            switch (channel)
+            {
+                case '/meta/handshake':
+                    _handshakeFailure(conduit, message);
+                    break;
+                case '/meta/connect':
+                    _connectFailure(conduit, message);
+                    break;
+                case '/meta/disconnect':
+                    _disconnectFailure(conduit, message);
+                    break;
+                case '/meta/subscribe':
+                    _subscribeFailure(conduit, message);
+                    break;
+                case '/meta/unsubscribe':
+                    _unsubscribeFailure(conduit, message);
+                    break;
+                default:
+                    _messageFailure(conduit, message);
+                    break;
+            }
+        }
+    };
+
+    function _hasSubscriptions(channel)
+    {
+        var subscriptions = _listeners[channel];
+        if (subscriptions)
+        {
+            for (var i = 0; i < subscriptions.length; ++i)
+            {
+                if (subscriptions[i])
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function _resolveScopedCallback(scope, callback)
+    {
+        var delegate = {
+            scope: scope,
+            method: callback
+        };
+        if (_isFunction(scope))
+        {
+            delegate.scope = undefined;
+            delegate.method = scope;
+        }
+        else
+        {
+            if (_isString(callback))
+            {
+                if (!scope)
+                {
+                    throw 'Invalid scope ' + scope;
+                }
+                delegate.method = scope[callback];
+                if (!_isFunction(delegate.method))
+                {
+                    throw 'Invalid callback ' + callback + ' for scope ' + scope;
+                }
+            }
+            else if (!_isFunction(callback))
+            {
+                throw 'Invalid callback ' + callback;
+            }
+        }
+        return delegate;
+    }
+
+    function _addListener(channel, scope, callback, isListener)
+    {
+        // The data structure is a map<channel, subscription[]>, where each subscription
+        // holds the callback to be called and its scope.
+
+        var delegate = _resolveScopedCallback(scope, callback);
+        _cometd._debug('Adding listener on', channel, 'with scope', delegate.scope, 'and callback', delegate.method);
+
+        var subscription = {
+            channel: channel,
+            scope: delegate.scope,
+            callback: delegate.method,
+            listener: isListener
+        };
+
+        var subscriptions = _listeners[channel];
+        if (!subscriptions)
+        {
+            subscriptions = [];
+            _listeners[channel] = subscriptions;
+        }
+
+        // Pushing onto an array appends at the end and returns the id associated with the element increased by 1.
+        // Note that if:
+        // a.push('a'); var hb=a.push('b'); delete a[hb-1]; var hc=a.push('c');
+        // then:
+        // hc==3, a.join()=='a',,'c', a.length==3
+        var subscriptionID = subscriptions.push(subscription) - 1;
+        subscription.id = subscriptionID;
+        subscription.handle = [channel, subscriptionID];
+
+        _cometd._debug('Added listener', subscription, 'for channel', channel, 'having id =', subscriptionID);
+
+        // The subscription to allow removal of the listener is made of the channel and the index
+        return subscription.handle;
+    }
+
+    function _removeListener(subscription)
+    {
+        var subscriptions = _listeners[subscription[0]];
+        if (subscriptions)
+        {
+            delete subscriptions[subscription[1]];
+            _cometd._debug('Removed listener', subscription);
+        }
+    }
+
+    //
+    // PUBLIC API
+    //
+
+    /**
+     * Registers the given transport under the given transport type.
+     * The optional index parameter specifies the "priority" at which the
+     * transport is registered (where 0 is the max priority).
+     * If a transport with the same type is already registered, this function
+     * does nothing and returns false.
+     * @param type the transport type
+     * @param transport the transport object
+     * @param index the index at which this transport is to be registered
+     * @return true if the transport has been registered, false otherwise
+     * @see #unregisterTransport(type)
+     */
+    this.registerTransport = function(type, transport, index)
+    {
+        var result = _transports.add(type, transport, index);
+        if (result)
+        {
+            this._debug('Registered transport', type);
+
+            if (_isFunction(transport.registered))
+            {
+                transport.registered(type, this);
+            }
+        }
+        return result;
+    };
+
+    /**
+     * @return an array of all registered transport types
+     */
+    this.getTransportTypes = function()
+    {
+        return _transports.getTransportTypes();
+    };
+
+    /**
+     * Unregisters the transport with the given transport type.
+     * @param type the transport type to unregister
+     * @return the transport that has been unregistered,
+     * or null if no transport was previously registered under the given transport type
+     */
+    this.unregisterTransport = function(type)
+    {
+        var transport = _transports.remove(type);
+        if (transport !== null)
+        {
+            this._debug('Unregistered transport', type);
+
+            if (_isFunction(transport.unregistered))
+            {
+                transport.unregistered();
+            }
+        }
+        return transport;
+    };
+
+    this.unregisterTransports = function()
+    {
+        _transports.clear();
+    };
+
+    this.findTransport = function(name)
+    {
+        return _transports.find(name);
+    };
+
+    /**
+     * Configures the initial Bayeux communication with the Bayeux server.
+     * Configuration is passed via an object that must contain a mandatory field <code>url</code>
+     * of type string containing the URL of the Bayeux server.
+     * @param configuration the configuration object
+     */
+    this.configure = function(configuration)
+    {
+        _configure.call(this, configuration);
+    };
+
+    /**
+     * Configures and establishes the Bayeux communication with the Bayeux server
+     * via a handshake and a subsequent connect.
+     * @param configuration the configuration object
+     * @param handshakeProps an object to be merged with the handshake message
+     * @see #configure(configuration)
+     * @see #handshake(handshakeProps)
+     */
+    this.init = function(configuration, handshakeProps)
+    {
+        this.configure(configuration);
+        this.handshake(handshakeProps);
+    };
+
+    /**
+     * Establishes the Bayeux communication with the Bayeux server
+     * via a handshake and a subsequent connect.
+     * @param handshakeProps an object to be merged with the handshake message
+     */
+    this.handshake = function(handshakeProps)
+    {
+        _setStatus('disconnected');
+        _reestablish = false;
+        _handshake(handshakeProps);
+    };
+
+    /**
+     * Disconnects from the Bayeux server.
+     * It is possible to suggest to attempt a synchronous disconnect, but this feature
+     * may only be available in certain transports (for example, long-polling may support
+     * it, callback-polling certainly does not).
+     * @param sync whether attempt to perform a synchronous disconnect
+     * @param disconnectProps an object to be merged with the disconnect message
+     */
+    this.disconnect = function(sync, disconnectProps)
+    {
+        if (_isDisconnected())
+        {
+            return;
+        }
+
+        if (disconnectProps === undefined)
+        {
+            if (typeof sync !== 'boolean')
+            {
+                disconnectProps = sync;
+                sync = false;
+            }
+        }
+
+        var bayeuxMessage = {
+            channel: '/meta/disconnect'
+        };
+        var message = this._mixin(false, {}, disconnectProps, bayeuxMessage);
+        _setStatus('disconnecting');
+        _send(sync === true, [message], false, 'disconnect');
+    };
+
+    /**
+     * Marks the start of a batch of application messages to be sent to the server
+     * in a single request, obtaining a single response containing (possibly) many
+     * application reply messages.
+     * Messages are held in a queue and not sent until {@link #endBatch()} is called.
+     * If startBatch() is called multiple times, then an equal number of endBatch()
+     * calls must be made to close and send the batch of messages.
+     * @see #endBatch()
+     */
+    this.startBatch = function()
+    {
+        _startBatch();
+    };
+
+    /**
+     * Marks the end of a batch of application messages to be sent to the server
+     * in a single request.
+     * @see #startBatch()
+     */
+    this.endBatch = function()
+    {
+        _endBatch();
+    };
+
+    /**
+     * Executes the given callback in the given scope, surrounded by a {@link #startBatch()}
+     * and {@link #endBatch()} calls.
+     * @param scope the scope of the callback, may be omitted
+     * @param callback the callback to be executed within {@link #startBatch()} and {@link #endBatch()} calls
+     */
+    this.batch = function(scope, callback)
+    {
+        var delegate = _resolveScopedCallback(scope, callback);
+        this.startBatch();
+        try
+        {
+            delegate.method.call(delegate.scope);
+            this.endBatch();
+        }
+        catch (x)
+        {
+            this._debug('Exception during execution of batch', x);
+            this.endBatch();
+            throw x;
+        }
+    };
+
+    /**
+     * Adds a listener for bayeux messages, performing the given callback in the given scope
+     * when a message for the given channel arrives.
+     * @param channel the channel the listener is interested to
+     * @param scope the scope of the callback, may be omitted
+     * @param callback the callback to call when a message is sent to the channel
+     * @returns the subscription handle to be passed to {@link #removeListener(object)}
+     * @see #removeListener(subscription)
+     */
+    this.addListener = function(channel, scope, callback)
+    {
+        if (arguments.length < 2)
+        {
+            throw 'Illegal arguments number: required 2, got ' + arguments.length;
+        }
+        if (!_isString(channel))
+        {
+            throw 'Illegal argument type: channel must be a string';
+        }
+
+        return _addListener(channel, scope, callback, true);
+    };
+
+    /**
+     * Removes the subscription obtained with a call to {@link #addListener(string, object, function)}.
+     * @param subscription the subscription to unsubscribe.
+     * @see #addListener(channel, scope, callback)
+     */
+    this.removeListener = function(subscription)
+    {
+        if (!org.cometd.Utils.isArray(subscription))
+        {
+            throw 'Invalid argument: expected subscription, not ' + subscription;
+        }
+
+        _removeListener(subscription);
+    };
+
+    /**
+     * Removes all listeners registered with {@link #addListener(channel, scope, callback)} or
+     * {@link #subscribe(channel, scope, callback)}.
+     */
+    this.clearListeners = function()
+    {
+        _listeners = {};
+    };
+
+    /**
+     * Subscribes to the given channel, performing the given callback in the given scope
+     * when a message for the channel arrives.
+     * @param channel the channel to subscribe to
+     * @param scope the scope of the callback, may be omitted
+     * @param callback the callback to call when a message is sent to the channel
+     * @param subscribeProps an object to be merged with the subscribe message
+     * @return the subscription handle to be passed to {@link #unsubscribe(object)}
+     */
+    this.subscribe = function(channel, scope, callback, subscribeProps)
+    {
+        if (arguments.length < 2)
+        {
+            throw 'Illegal arguments number: required 2, got ' + arguments.length;
+        }
+        if (!_isString(channel))
+        {
+            throw 'Illegal argument type: channel must be a string';
+        }
+        if (_isDisconnected())
+        {
+            throw 'Illegal state: already disconnected';
+        }
+
+        // Normalize arguments
+        if (_isFunction(scope))
+        {
+            subscribeProps = callback;
+            callback = scope;
+            scope = undefined;
+        }
+
+        // Only send the message to the server if this client has not yet subscribed to the channel
+        var send = !_hasSubscriptions(channel);
+
+        var subscription = _addListener(channel, scope, callback, false);
+
+        if (send)
+        {
+            // Send the subscription message after the subscription registration to avoid
+            // races where the server would send a message to the subscribers, but here
+            // on the client the subscription has not been added yet to the data structures
+            var bayeuxMessage = {
+                channel: '/meta/subscribe',
+                subscription: channel
+            };
+            var message = this._mixin(false, {}, subscribeProps, bayeuxMessage);
+            _queueSend(message);
+        }
+
+        return subscription;
+    };
+
+    /**
+     * Unsubscribes the subscription obtained with a call to {@link #subscribe(string, object, function)}.
+     * @param subscription the subscription to unsubscribe.
+     */
+    this.unsubscribe = function(subscription, unsubscribeProps)
+    {
+        if (arguments.length < 1)
+        {
+            throw 'Illegal arguments number: required 1, got ' + arguments.length;
+        }
+        if (_isDisconnected())
+        {
+            throw 'Illegal state: already disconnected';
+        }
+
+        // Remove the local listener before sending the message
+        // This ensures that if the server fails, this client does not get notifications
+        this.removeListener(subscription);
+
+        var channel = subscription[0];
+        // Only send the message to the server if this client unsubscribes the last subscription
+        if (!_hasSubscriptions(channel))
+        {
+            var bayeuxMessage = {
+                channel: '/meta/unsubscribe',
+                subscription: channel
+            };
+            var message = this._mixin(false, {}, unsubscribeProps, bayeuxMessage);
+            _queueSend(message);
+        }
+    };
+
+    /**
+     * Removes all subscriptions added via {@link #subscribe(channel, scope, callback, subscribeProps)},
+     * but does not remove the listeners added via {@link addListener(channel, scope, callback)}.
+     */
+    this.clearSubscriptions = function()
+    {
+        _clearSubscriptions();
+    };
+
+    /**
+     * Publishes a message on the given channel, containing the given content.
+     * @param channel the channel to publish the message to
+     * @param content the content of the message
+     * @param publishProps an object to be merged with the publish message
+     */
+    this.publish = function(channel, content, publishProps)
+    {
+        if (arguments.length < 1)
+        {
+            throw 'Illegal arguments number: required 1, got ' + arguments.length;
+        }
+        if (!_isString(channel))
+        {
+            throw 'Illegal argument type: channel must be a string';
+        }
+        if (_isDisconnected())
+        {
+            throw 'Illegal state: already disconnected';
+        }
+
+        var bayeuxMessage = {
+            channel: channel,
+            data: content
+        };
+        var message = this._mixin(false, {}, publishProps, bayeuxMessage);
+        _queueSend(message);
+    };
+
+    /**
+     * Returns a string representing the status of the bayeux communication with the Bayeux server.
+     */
+    this.getStatus = function()
+    {
+        return _status;
+    };
+
+    /**
+     * Returns whether this instance has been disconnected.
+     */
+    this.isDisconnected = _isDisconnected;
+
+    /**
+     * Sets the backoff period used to increase the backoff time when retrying an unsuccessful or failed message.
+     * Default value is 1 second, which means if there is a persistent failure the retries will happen
+     * after 1 second, then after 2 seconds, then after 3 seconds, etc. So for example with 15 seconds of
+     * elapsed time, there will be 5 retries (at 1, 3, 6, 10 and 15 seconds elapsed).
+     * @param period the backoff period to set
+     * @see #getBackoffIncrement()
+     */
+    this.setBackoffIncrement = function(period)
+    {
+        _config.backoffIncrement = period;
+    };
+
+    /**
+     * Returns the backoff period used to increase the backoff time when retrying an unsuccessful or failed message.
+     * @see #setBackoffIncrement(period)
+     */
+    this.getBackoffIncrement = function()
+    {
+        return _config.backoffIncrement;
+    };
+
+    /**
+     * Returns the backoff period to wait before retrying an unsuccessful or failed message.
+     */
+    this.getBackoffPeriod = function()
+    {
+        return _backoff;
+    };
+
+    /**
+     * Sets the log level for console logging.
+     * Valid values are the strings 'error', 'warn', 'info' and 'debug', from
+     * less verbose to more verbose.
+     * @param level the log level string
+     */
+    this.setLogLevel = function(level)
+    {
+        _config.logLevel = level;
+    };
+
+    /**
+     * Registers an extension whose callbacks are called for every incoming message
+     * (that comes from the server to this client implementation) and for every
+     * outgoing message (that originates from this client implementation for the
+     * server).
+     * The format of the extension object is the following:
+     * <pre>
+     * {
+     *     incoming: function(message) { ... },
+     *     outgoing: function(message) { ... }
+     * }
+     * </pre>
+     * Both properties are optional, but if they are present they will be called
+     * respectively for each incoming message and for each outgoing message.
+     * @param name the name of the extension
+     * @param extension the extension to register
+     * @return true if the extension was registered, false otherwise
+     * @see #unregisterExtension(name)
+     */
+    this.registerExtension = function(name, extension)
+    {
+        if (arguments.length < 2)
+        {
+            throw 'Illegal arguments number: required 2, got ' + arguments.length;
+        }
+        if (!_isString(name))
+        {
+            throw 'Illegal argument type: extension name must be a string';
+        }
+
+        var existing = false;
+        for (var i = 0; i < _extensions.length; ++i)
+        {
+            var existingExtension = _extensions[i];
+            if (existingExtension.name === name)
+            {
+                existing = true;
+                break;
+            }
+        }
+        if (!existing)
+        {
+            _extensions.push({
+                name: name,
+                extension: extension
+            });
+            this._debug('Registered extension', name);
+
+            // Callback for extensions
+            if (_isFunction(extension.registered))
+            {
+                extension.registered(name, this);
+            }
+
+            return true;
+        }
+        else
+        {
+            this._info('Could not register extension with name', name, 'since another extension with the same name already exists');
+            return false;
+        }
+    };
+
+    /**
+     * Unregister an extension previously registered with
+     * {@link #registerExtension(name, extension)}.
+     * @param name the name of the extension to unregister.
+     * @return true if the extension was unregistered, false otherwise
+     */
+    this.unregisterExtension = function(name)
+    {
+        if (!_isString(name))
+        {
+            throw 'Illegal argument type: extension name must be a string';
+        }
+
+        var unregistered = false;
+        for (var i = 0; i < _extensions.length; ++i)
+        {
+            var extension = _extensions[i];
+            if (extension.name === name)
+            {
+                _extensions.splice(i, 1);
+                unregistered = true;
+                this._debug('Unregistered extension', name);
+
+                // Callback for extensions
+                var ext = extension.extension;
+                if (_isFunction(ext.unregistered))
+                {
+                    ext.unregistered();
+                }
+
+                break;
+            }
+        }
+        return unregistered;
+    };
+
+    /**
+     * Find the extension registered with the given name.
+     * @param name the name of the extension to find
+     * @return the extension found or null if no extension with the given name has been registered
+     */
+    this.getExtension = function(name)
+    {
+        for (var i = 0; i < _extensions.length; ++i)
+        {
+            var extension = _extensions[i];
+            if (extension.name === name)
+            {
+                return extension.extension;
+            }
+        }
+        return null;
+    };
+
+    /**
+     * Returns the name assigned to this Cometd object, or the string 'default'
+     * if no name has been explicitly passed as parameter to the constructor.
+     */
+    this.getName = function()
+    {
+        return _name;
+    };
+
+    /**
+     * Returns the clientId assigned by the Bayeux server during handshake.
+     */
+    this.getClientId = function()
+    {
+        return _clientId;
+    };
+
+    /**
+     * Returns the URL of the Bayeux server.
+     */
+    this.getURL = function()
+    {
+        return _config.url;
+    };
+
+    this.getTransport = function()
+    {
+        return _transport;
+    };
+
+    this.getConfiguration = function()
+    {
+        return this._mixin(true, {}, _config);
+    };
+
+    this.getAdvice = function()
+    {
+        return this._mixin(true, {}, _advice);
+    };
+
+    // WebSocket handling for Firefox, which deploys WebSocket
+    // under the name of MozWebSocket in Firefox 6, 7, 8 and 9
+    org.cometd.WebSocket = window.WebSocket;
+    if (!org.cometd.WebSocket)
+    {
+        org.cometd.WebSocket = window.MozWebSocket;
+    }
+};
+
+// -------------------
+// Binding of cometd as requirejs module.
+// Author: tigbro (OPITZ CONSULTING GmbH)
+// Cometd-version: 2.4.3
+// --------------------
+
+// Remap cometd JSON functions to normal JSON functions
+org.cometd.JSON.toJSON = JSON.stringify;
+org.cometd.JSON.fromJSON = JSON.parse;
+
+function _setHeaders(xhr, headers)
+{
+    if (headers)
+    {
+        for (var headerName in headers)
+        {
+            if (headerName.toLowerCase() === 'content-type')
+            {
+                continue;
+            }
+            xhr.setRequestHeader(headerName, headers[headerName]);
+        }
+    }
+}
+
+// Remap toolkit-specific transport calls
+function LongPollingTransport()
+{
+    var _super = new org.cometd.LongPollingTransport();
+    var that = org.cometd.Transport.derive(_super);
+
+    that.xhrSend = function(packet)
+    {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', packet.url, !packet.sync);
+      xhr.setRequestHeader("Content-Type", 'application/json;charset=UTF-8');
+      _setHeaders(xhr, packet.headers);
+      // Has no effect if the request is not cross domain
+      // but if it is, allows cookies to be sent to the server
+      xhr.withCredentials = true;
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState===4) {
+          if (xhr.status>=200 && xhr.status<300) {
+            packet.onSuccess(org.cometd.JSON.fromJSON(xhr.responseText));
+          } else {
+            packet.onError("error", xhr.statusText);
+          }
+        }
+      };
+      xhr.send(packet.body);
+      return xhr;
+    };
+
+    return that;
+}
+
+function connect(config, handshakeCallback)
+{
+    var cometd = new org.cometd.Cometd(name);
+
+    // Registration order is important
+    /*
+      Websockets are buggy in iOS and can lead to crashes with big messages
+    if (org.cometd.WebSocket)
+    {
+        cometd.registerTransport('websocket', new org.cometd.WebSocketTransport());
+    }
+     */ 
+    cometd.registerTransport('long-polling', new LongPollingTransport());
+    cometd.configure(config);
+
+    if (handshakeCallback) {
+      cometd.addListener("/meta/handshake", function(handshake) {
+        if (!handshake.successful) {
+          return;
+        }
+        handshakeCallback(cometd);
+      });
+    };
+    cometd.handshake();
+
+    return cometd;
+};
+
+if (typeof module !== "undefined") {
+    module.exports = {
+        connect: connect
+    };
+} else {
+    window.cometd = {
+        connect: connect
+    }
+}
+
+
+});
+
 // file: lib/proxy/plugin/proxy/device.js
 define("cordova/plugin/proxy/device", function(require, exports, module) {
 var channel = require('cordova/channel'),
@@ -4590,3253 +7677,6 @@ Device.prototype.getInfo = function(successCallback, errorCallback) {
 };
 
 module.exports = new Device();
-});
-
-// file: lib/proxy/plugin/proxy/socket.io.client.js
-define("cordova/plugin/proxy/socket.io.client", function(require, exports, module) {
-/*! Socket.IO.js build:0.9.6, development. Copyright(c) 2011 LearnBoost <dev@learnboost.com> MIT Licensed */
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, global) {
-
-  /**
-   * IO namespace.
-   *
-   * @namespace
-   */
-
-  var io = exports;
-
-  /**
-   * Socket.IO version
-   *
-   * @api public
-   */
-
-  io.version = '0.9.6';
-
-  /**
-   * Protocol implemented.
-   *
-   * @api public
-   */
-
-  io.protocol = 1;
-
-  /**
-   * Available transports, these will be populated with the available transports
-   *
-   * @api public
-   */
-
-  io.transports = [];
-
-  /**
-   * Keep track of jsonp callbacks.
-   *
-   * @api private
-   */
-
-  io.j = [];
-
-  /**
-   * Keep track of our io.Sockets
-   *
-   * @api private
-   */
-  io.sockets = {};
-
-
-  /**
-   * Manages connections to hosts.
-   *
-   * @param {String} uri
-   * @Param {Boolean} force creation of new socket (defaults to false)
-   * @api public
-   */
-
-  io.connect = function (host, details) {
-    var uri = io.util.parseUri(host)
-      , uuri
-      , socket;
-
-    if (global && global.location) {
-      uri.protocol = uri.protocol || global.location.protocol.slice(0, -1);
-      uri.host = uri.host || (global.document
-        ? global.document.domain : global.location.hostname);
-      uri.port = uri.port || global.location.port;
-    }
-
-    uuri = io.util.uniqueUri(uri);
-
-    var options = {
-        host: uri.host
-      , secure: 'https' == uri.protocol
-      , port: uri.port || ('https' == uri.protocol ? 443 : 80)
-      , query: uri.query || ''
-    };
-
-    io.util.merge(options, details);
-
-    if (options['force new connection'] || !io.sockets[uuri]) {
-      socket = new io.Socket(options);
-    }
-
-    if (!options['force new connection'] && socket) {
-      io.sockets[uuri] = socket;
-    }
-
-    socket = socket || io.sockets[uuri];
-
-    // if path is different from '' or /
-    return socket.of(uri.path.length > 1 ? uri.path : '');
-  };
-
-})('object' === typeof module ? module.exports : (this.io = {}), this);
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, global) {
-
-  /**
-   * Utilities namespace.
-   *
-   * @namespace
-   */
-
-  var util = exports.util = {};
-
-  /**
-   * Parses an URI
-   *
-   * @author Steven Levithan <stevenlevithan.com> (MIT license)
-   * @api public
-   */
-
-  var re = /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/;
-
-  var parts = ['source', 'protocol', 'authority', 'userInfo', 'user', 'password',
-               'host', 'port', 'relative', 'path', 'directory', 'file', 'query',
-               'anchor'];
-
-  util.parseUri = function (str) {
-    var m = re.exec(str || '')
-      , uri = {}
-      , i = 14;
-
-    while (i--) {
-      uri[parts[i]] = m[i] || '';
-    }
-
-    return uri;
-  };
-
-  /**
-   * Produces a unique url that identifies a Socket.IO connection.
-   *
-   * @param {Object} uri
-   * @api public
-   */
-
-  util.uniqueUri = function (uri) {
-    var protocol = uri.protocol
-      , host = uri.host
-      , port = uri.port;
-
-    if ('document' in global) {
-      host = host || document.domain;
-      port = port || (protocol == 'https'
-        && document.location.protocol !== 'https:' ? 443 : document.location.port);
-    } else {
-      host = host || 'localhost';
-
-      if (!port && protocol == 'https') {
-        port = 443;
-      }
-    }
-
-    return (protocol || 'http') + '://' + host + ':' + (port || 80);
-  };
-
-  /**
-   * Mergest 2 query strings in to once unique query string
-   *
-   * @param {String} base
-   * @param {String} addition
-   * @api public
-   */
-
-  util.query = function (base, addition) {
-    var query = util.chunkQuery(base || '')
-      , components = [];
-
-    util.merge(query, util.chunkQuery(addition || ''));
-    for (var part in query) {
-      if (query.hasOwnProperty(part)) {
-        components.push(part + '=' + query[part]);
-      }
-    }
-
-    return components.length ? '?' + components.join('&') : '';
-  };
-
-  /**
-   * Transforms a querystring in to an object
-   *
-   * @param {String} qs
-   * @api public
-   */
-
-  util.chunkQuery = function (qs) {
-    var query = {}
-      , params = qs.split('&')
-      , i = 0
-      , l = params.length
-      , kv;
-
-    for (; i < l; ++i) {
-      kv = params[i].split('=');
-      if (kv[0]) {
-        query[kv[0]] = kv[1];
-      }
-    }
-
-    return query;
-  };
-
-  /**
-   * Executes the given function when the page is loaded.
-   *
-   *     io.util.load(function () { console.log('page loaded'); });
-   *
-   * @param {Function} fn
-   * @api public
-   */
-
-  var pageLoaded = false;
-
-  util.load = function (fn) {
-    if ('document' in global && document.readyState === 'complete' || pageLoaded) {
-      return fn();
-    }
-
-    util.on(global, 'load', fn, false);
-  };
-
-  /**
-   * Adds an event.
-   *
-   * @api private
-   */
-
-  util.on = function (element, event, fn, capture) {
-    if (element.attachEvent) {
-      element.attachEvent('on' + event, fn);
-    } else if (element.addEventListener) {
-      element.addEventListener(event, fn, capture);
-    }
-  };
-
-  /**
-   * Generates the correct `XMLHttpRequest` for regular and cross domain requests.
-   *
-   * @param {Boolean} [xdomain] Create a request that can be used cross domain.
-   * @returns {XMLHttpRequest|false} If we can create a XMLHttpRequest.
-   * @api private
-   */
-
-  util.request = function (xdomain) {
-
-    if (xdomain && 'undefined' != typeof XDomainRequest) {
-      return new XDomainRequest();
-    }
-
-    if ('undefined' != typeof XMLHttpRequest && (!xdomain || util.ua.hasCORS)) {
-      return new XMLHttpRequest();
-    }
-
-    if (!xdomain) {
-      try {
-        return new window[(['Active'].concat('Object').join('X'))]('Microsoft.XMLHTTP');
-      } catch(e) { }
-    }
-
-    return null;
-  };
-
-  /**
-   * XHR based transport constructor.
-   *
-   * @constructor
-   * @api public
-   */
-
-  /**
-   * Change the internal pageLoaded value.
-   */
-
-  if ('undefined' != typeof window) {
-    util.load(function () {
-      pageLoaded = true;
-    });
-  }
-
-  /**
-   * Defers a function to ensure a spinner is not displayed by the browser
-   *
-   * @param {Function} fn
-   * @api public
-   */
-
-  util.defer = function (fn) {
-    if (!util.ua.webkit || 'undefined' != typeof importScripts) {
-      return fn();
-    }
-
-    util.load(function () {
-      setTimeout(fn, 100);
-    });
-  };
-
-  /**
-   * Merges two objects.
-   *
-   * @api public
-   */
-  
-  util.merge = function merge (target, additional, deep, lastseen) {
-    var seen = lastseen || []
-      , depth = typeof deep == 'undefined' ? 2 : deep
-      , prop;
-
-    for (prop in additional) {
-      if (additional.hasOwnProperty(prop) && util.indexOf(seen, prop) < 0) {
-        if (typeof target[prop] !== 'object' || !depth) {
-          target[prop] = additional[prop];
-          seen.push(additional[prop]);
-        } else {
-          util.merge(target[prop], additional[prop], depth - 1, seen);
-        }
-      }
-    }
-
-    return target;
-  };
-
-  /**
-   * Merges prototypes from objects
-   *
-   * @api public
-   */
-  
-  util.mixin = function (ctor, ctor2) {
-    util.merge(ctor.prototype, ctor2.prototype);
-  };
-
-  /**
-   * Shortcut for prototypical and static inheritance.
-   *
-   * @api private
-   */
-
-  util.inherit = function (ctor, ctor2) {
-    function f() {};
-    f.prototype = ctor2.prototype;
-    ctor.prototype = new f;
-  };
-
-  /**
-   * Checks if the given object is an Array.
-   *
-   *     io.util.isArray([]); // true
-   *     io.util.isArray({}); // false
-   *
-   * @param Object obj
-   * @api public
-   */
-
-  util.isArray = Array.isArray || function (obj) {
-    return Object.prototype.toString.call(obj) === '[object Array]';
-  };
-
-  /**
-   * Intersects values of two arrays into a third
-   *
-   * @api public
-   */
-
-  util.intersect = function (arr, arr2) {
-    var ret = []
-      , longest = arr.length > arr2.length ? arr : arr2
-      , shortest = arr.length > arr2.length ? arr2 : arr;
-
-    for (var i = 0, l = shortest.length; i < l; i++) {
-      if (~util.indexOf(longest, shortest[i]))
-        ret.push(shortest[i]);
-    }
-
-    return ret;
-  }
-
-  /**
-   * Array indexOf compatibility.
-   *
-   * @see bit.ly/a5Dxa2
-   * @api public
-   */
-
-  util.indexOf = function (arr, o, i) {
-    
-    for (var j = arr.length, i = i < 0 ? i + j < 0 ? 0 : i + j : i || 0; 
-         i < j && arr[i] !== o; i++) {}
-
-    return j <= i ? -1 : i;
-  };
-
-  /**
-   * Converts enumerables to array.
-   *
-   * @api public
-   */
-
-  util.toArray = function (enu) {
-    var arr = [];
-
-    for (var i = 0, l = enu.length; i < l; i++)
-      arr.push(enu[i]);
-
-    return arr;
-  };
-
-  /**
-   * UA / engines detection namespace.
-   *
-   * @namespace
-   */
-
-  util.ua = {};
-
-  /**
-   * Whether the UA supports CORS for XHR.
-   *
-   * @api public
-   */
-
-  util.ua.hasCORS = 'undefined' != typeof XMLHttpRequest && (function () {
-    try {
-      var a = new XMLHttpRequest();
-    } catch (e) {
-      return false;
-    }
-
-    return a.withCredentials != undefined;
-  })();
-
-  /**
-   * Detect webkit.
-   *
-   * @api public
-   */
-
-  util.ua.webkit = 'undefined' != typeof navigator
-    && /webkit/i.test(navigator.userAgent);
-
-})(true?module.exports : module.exports, this);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports.EventEmitter = EventEmitter;
-
-  /**
-   * Event emitter constructor.
-   *
-   * @api public.
-   */
-
-  function EventEmitter () {};
-
-  /**
-   * Adds a listener
-   *
-   * @api public
-   */
-
-  EventEmitter.prototype.on = function (name, fn) {
-    if (!this.$events) {
-      this.$events = {};
-    }
-
-    if (!this.$events[name]) {
-      this.$events[name] = fn;
-    } else if (io.util.isArray(this.$events[name])) {
-      this.$events[name].push(fn);
-    } else {
-      this.$events[name] = [this.$events[name], fn];
-    }
-
-    return this;
-  };
-
-  EventEmitter.prototype.addListener = EventEmitter.prototype.on;
-
-  /**
-   * Adds a volatile listener.
-   *
-   * @api public
-   */
-
-  EventEmitter.prototype.once = function (name, fn) {
-    var self = this;
-
-    function on () {
-      self.removeListener(name, on);
-      fn.apply(this, arguments);
-    };
-
-    on.listener = fn;
-    this.on(name, on);
-
-    return this;
-  };
-
-  /**
-   * Removes a listener.
-   *
-   * @api public
-   */
-
-  EventEmitter.prototype.removeListener = function (name, fn) {
-    if (this.$events && this.$events[name]) {
-      var list = this.$events[name];
-
-      if (io.util.isArray(list)) {
-        var pos = -1;
-
-        for (var i = 0, l = list.length; i < l; i++) {
-          if (list[i] === fn || (list[i].listener && list[i].listener === fn)) {
-            pos = i;
-            break;
-          }
-        }
-
-        if (pos < 0) {
-          return this;
-        }
-
-        list.splice(pos, 1);
-
-        if (!list.length) {
-          delete this.$events[name];
-        }
-      } else if (list === fn || (list.listener && list.listener === fn)) {
-        delete this.$events[name];
-      }
-    }
-
-    return this;
-  };
-
-  /**
-   * Removes all listeners for an event.
-   *
-   * @api public
-   */
-
-  EventEmitter.prototype.removeAllListeners = function (name) {
-    // TODO: enable this when node 0.5 is stable
-    //if (name === undefined) {
-      //this.$events = {};
-      //return this;
-    //}
-
-    if (this.$events && this.$events[name]) {
-      this.$events[name] = null;
-    }
-
-    return this;
-  };
-
-  /**
-   * Gets all listeners for a certain event.
-   *
-   * @api publci
-   */
-
-  EventEmitter.prototype.listeners = function (name) {
-    if (!this.$events) {
-      this.$events = {};
-    }
-
-    if (!this.$events[name]) {
-      this.$events[name] = [];
-    }
-
-    if (!io.util.isArray(this.$events[name])) {
-      this.$events[name] = [this.$events[name]];
-    }
-
-    return this.$events[name];
-  };
-
-  /**
-   * Emits an event.
-   *
-   * @api public
-   */
-
-  EventEmitter.prototype.emit = function (name) {
-    if (!this.$events) {
-      return false;
-    }
-
-    var handler = this.$events[name];
-
-    if (!handler) {
-      return false;
-    }
-
-    var args = Array.prototype.slice.call(arguments, 1);
-
-    if ('function' == typeof handler) {
-      handler.apply(this, args);
-    } else if (io.util.isArray(handler)) {
-      var listeners = handler.slice();
-
-      for (var i = 0, l = listeners.length; i < l; i++) {
-        listeners[i].apply(this, args);
-      }
-    } else {
-      return false;
-    }
-
-    return true;
-  };
-
-})(
-    true?module.exports : module.exports
-  , true?module.exports : module.parent.exports
-);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-/**
- * Based on JSON2 (http://www.JSON.org/js.html).
- */
-
-(function (exports, nativeJSON) {
-  "use strict";
-
-  // use native JSON if it's available
-  if (nativeJSON && nativeJSON.parse){
-    return exports.JSON = {
-      parse: nativeJSON.parse
-    , stringify: nativeJSON.stringify
-    }
-  }
-
-  var JSON = exports.JSON = {};
-
-  function f(n) {
-      // Format integers to have at least two digits.
-      return n < 10 ? '0' + n : n;
-  }
-
-  function date(d, key) {
-    return isFinite(d.valueOf()) ?
-        d.getUTCFullYear()     + '-' +
-        f(d.getUTCMonth() + 1) + '-' +
-        f(d.getUTCDate())      + 'T' +
-        f(d.getUTCHours())     + ':' +
-        f(d.getUTCMinutes())   + ':' +
-        f(d.getUTCSeconds())   + 'Z' : null;
-  };
-
-  var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-      escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-      gap,
-      indent,
-      meta = {    // table of character substitutions
-          '\b': '\\b',
-          '\t': '\\t',
-          '\n': '\\n',
-          '\f': '\\f',
-          '\r': '\\r',
-          '"' : '\\"',
-          '\\': '\\\\'
-      },
-      rep;
-
-
-  function quote(string) {
-
-// If the string contains no control characters, no quote characters, and no
-// backslash characters, then we can safely slap some quotes around it.
-// Otherwise we must also replace the offending characters with safe escape
-// sequences.
-
-      escapable.lastIndex = 0;
-      return escapable.test(string) ? '"' + string.replace(escapable, function (a) {
-          var c = meta[a];
-          return typeof c === 'string' ? c :
-              '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-      }) + '"' : '"' + string + '"';
-  }
-
-
-  function str(key, holder) {
-
-// Produce a string from holder[key].
-
-      var i,          // The loop counter.
-          k,          // The member key.
-          v,          // The member value.
-          length,
-          mind = gap,
-          partial,
-          value = holder[key];
-
-// If the value has a toJSON method, call it to obtain a replacement value.
-
-      if (value instanceof Date) {
-          value = date(key);
-      }
-
-// If we were called with a replacer function, then call the replacer to
-// obtain a replacement value.
-
-      if (typeof rep === 'function') {
-          value = rep.call(holder, key, value);
-      }
-
-// What happens next depends on the value's type.
-
-      switch (typeof value) {
-      case 'string':
-          return quote(value);
-
-      case 'number':
-
-// JSON numbers must be finite. Encode non-finite numbers as null.
-
-          return isFinite(value) ? String(value) : 'null';
-
-      case 'boolean':
-      case 'null':
-
-// If the value is a boolean or null, convert it to a string. Note:
-// typeof null does not produce 'null'. The case is included here in
-// the remote chance that this gets fixed someday.
-
-          return String(value);
-
-// If the type is 'object', we might be dealing with an object or an array or
-// null.
-
-      case 'object':
-
-// Due to a specification blunder in ECMAScript, typeof null is 'object',
-// so watch out for that case.
-
-          if (!value) {
-              return 'null';
-          }
-
-// Make an array to hold the partial results of stringifying this object value.
-
-          gap += indent;
-          partial = [];
-
-// Is the value an array?
-
-          if (Object.prototype.toString.apply(value) === '[object Array]') {
-
-// The value is an array. Stringify every element. Use null as a placeholder
-// for non-JSON values.
-
-              length = value.length;
-              for (i = 0; i < length; i += 1) {
-                  partial[i] = str(i, value) || 'null';
-              }
-
-// Join all of the elements together, separated with commas, and wrap them in
-// brackets.
-
-              v = partial.length === 0 ? '[]' : gap ?
-                  '[\n' + gap + partial.join(',\n' + gap) + '\n' + mind + ']' :
-                  '[' + partial.join(',') + ']';
-              gap = mind;
-              return v;
-          }
-
-// If the replacer is an array, use it to select the members to be stringified.
-
-          if (rep && typeof rep === 'object') {
-              length = rep.length;
-              for (i = 0; i < length; i += 1) {
-                  if (typeof rep[i] === 'string') {
-                      k = rep[i];
-                      v = str(k, value);
-                      if (v) {
-                          partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                      }
-                  }
-              }
-          } else {
-
-// Otherwise, iterate through all of the keys in the object.
-
-              for (k in value) {
-                  if (Object.prototype.hasOwnProperty.call(value, k)) {
-                      v = str(k, value);
-                      if (v) {
-                          partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                      }
-                  }
-              }
-          }
-
-// Join all of the member texts together, separated with commas,
-// and wrap them in braces.
-
-          v = partial.length === 0 ? '{}' : gap ?
-              '{\n' + gap + partial.join(',\n' + gap) + '\n' + mind + '}' :
-              '{' + partial.join(',') + '}';
-          gap = mind;
-          return v;
-      }
-  }
-
-// If the JSON object does not yet have a stringify method, give it one.
-
-  JSON.stringify = function (value, replacer, space) {
-
-// The stringify method takes a value and an optional replacer, and an optional
-// space parameter, and returns a JSON text. The replacer can be a function
-// that can replace values, or an array of strings that will select the keys.
-// A default replacer method can be provided. Use of the space parameter can
-// produce text that is more easily readable.
-
-      var i;
-      gap = '';
-      indent = '';
-
-// If the space parameter is a number, make an indent string containing that
-// many spaces.
-
-      if (typeof space === 'number') {
-          for (i = 0; i < space; i += 1) {
-              indent += ' ';
-          }
-
-// If the space parameter is a string, it will be used as the indent string.
-
-      } else if (typeof space === 'string') {
-          indent = space;
-      }
-
-// If there is a replacer, it must be a function or an array.
-// Otherwise, throw an error.
-
-      rep = replacer;
-      if (replacer && typeof replacer !== 'function' &&
-              (typeof replacer !== 'object' ||
-              typeof replacer.length !== 'number')) {
-          throw new Error('JSON.stringify');
-      }
-
-// Make a fake root object containing our value under the key of ''.
-// Return the result of stringifying the value.
-
-      return str('', {'': value});
-  };
-
-// If the JSON object does not yet have a parse method, give it one.
-
-  JSON.parse = function (text, reviver) {
-  // The parse method takes a text and an optional reviver function, and returns
-  // a JavaScript value if the text is a valid JSON text.
-
-      var j;
-
-      function walk(holder, key) {
-
-  // The walk method is used to recursively walk the resulting structure so
-  // that modifications can be made.
-
-          var k, v, value = holder[key];
-          if (value && typeof value === 'object') {
-              for (k in value) {
-                  if (Object.prototype.hasOwnProperty.call(value, k)) {
-                      v = walk(value, k);
-                      if (v !== undefined) {
-                          value[k] = v;
-                      } else {
-                          delete value[k];
-                      }
-                  }
-              }
-          }
-          return reviver.call(holder, key, value);
-      }
-
-
-  // Parsing happens in four stages. In the first stage, we replace certain
-  // Unicode characters with escape sequences. JavaScript handles many characters
-  // incorrectly, either silently deleting them, or treating them as line endings.
-
-      text = String(text);
-      cx.lastIndex = 0;
-      if (cx.test(text)) {
-          text = text.replace(cx, function (a) {
-              return '\\u' +
-                  ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-          });
-      }
-
-  // In the second stage, we run the text against regular expressions that look
-  // for non-JSON patterns. We are especially concerned with '()' and 'new'
-  // because they can cause invocation, and '=' because it can cause mutation.
-  // But just to be safe, we want to reject all unexpected forms.
-
-  // We split the second stage into 4 regexp operations in order to work around
-  // crippling inefficiencies in IE's and Safari's regexp engines. First we
-  // replace the JSON backslash pairs with '@' (a non-JSON character). Second, we
-  // replace all simple value tokens with ']' characters. Third, we delete all
-  // open brackets that follow a colon or comma or that begin the text. Finally,
-  // we look to see that the remaining characters are only whitespace or ']' or
-  // ',' or ':' or '{' or '}'. If that is so, then the text is safe for eval.
-
-      if (/^[\],:{}\s]*$/
-              .test(text.replace(/\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g, '@')
-                  .replace(/"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g, ']')
-                  .replace(/(?:^|:|,)(?:\s*\[)+/g, ''))) {
-
-  // In the third stage we use the eval function to compile the text into a
-  // JavaScript structure. The '{' operator is subject to a syntactic ambiguity
-  // in JavaScript: it can begin a block or an object literal. We wrap the text
-  // in parens to eliminate the ambiguity.
-
-          j = eval('(' + text + ')');
-
-  // In the optional fourth stage, we recursively walk the new structure, passing
-  // each name/value pair to a reviver function for possible transformation.
-
-          return typeof reviver === 'function' ?
-              walk({'': j}, '') : j;
-      }
-
-  // If the text is not JSON parseable, then a SyntaxError is thrown.
-
-      throw new SyntaxError('JSON.parse');
-  };
-
-})(
-    true?module.exports : module.exports
-  , typeof JSON !== 'undefined' ? JSON : undefined
-);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io) {
-
-  /**
-   * Parser namespace.
-   *
-   * @namespace
-   */
-
-  var parser = exports.parser = {};
-
-  /**
-   * Packet types.
-   */
-
-  var packets = parser.packets = [
-      'disconnect'
-    , 'connect'
-    , 'heartbeat'
-    , 'message'
-    , 'json'
-    , 'event'
-    , 'ack'
-    , 'error'
-    , 'noop'
-  ];
-
-  /**
-   * Errors reasons.
-   */
-
-  var reasons = parser.reasons = [
-      'transport not supported'
-    , 'client not handshaken'
-    , 'unauthorized'
-  ];
-
-  /**
-   * Errors advice.
-   */
-
-  var advice = parser.advice = [
-      'reconnect'
-  ];
-
-  /**
-   * Shortcuts.
-   */
-
-  var JSON = io.JSON
-    , indexOf = io.util.indexOf;
-
-  /**
-   * Encodes a packet.
-   *
-   * @api private
-   */
-
-  parser.encodePacket = function (packet) {
-    var type = indexOf(packets, packet.type)
-      , id = packet.id || ''
-      , endpoint = packet.endpoint || ''
-      , ack = packet.ack
-      , data = null;
-
-    switch (packet.type) {
-      case 'error':
-        var reason = packet.reason ? indexOf(reasons, packet.reason) : ''
-          , adv = packet.advice ? indexOf(advice, packet.advice) : '';
-
-        if (reason !== '' || adv !== '')
-          data = reason + (adv !== '' ? ('+' + adv) : '');
-
-        break;
-
-      case 'message':
-        if (packet.data !== '')
-          data = packet.data;
-        break;
-
-      case 'event':
-        var ev = { name: packet.name };
-
-        if (packet.args && packet.args.length) {
-          ev.args = packet.args;
-        }
-
-        data = JSON.stringify(ev);
-        break;
-
-      case 'json':
-        data = JSON.stringify(packet.data);
-        break;
-
-      case 'connect':
-        if (packet.qs)
-          data = packet.qs;
-        break;
-
-      case 'ack':
-        data = packet.ackId
-          + (packet.args && packet.args.length
-              ? '+' + JSON.stringify(packet.args) : '');
-        break;
-    }
-
-    // construct packet with required fragments
-    var encoded = [
-        type
-      , id + (ack == 'data' ? '+' : '')
-      , endpoint
-    ];
-
-    // data fragment is optional
-    if (data !== null && data !== undefined)
-      encoded.push(data);
-
-    return encoded.join(':');
-  };
-
-  /**
-   * Encodes multiple messages (payload).
-   *
-   * @param {Array} messages
-   * @api private
-   */
-
-  parser.encodePayload = function (packets) {
-    var decoded = '';
-
-    if (packets.length == 1)
-      return packets[0];
-
-    for (var i = 0, l = packets.length; i < l; i++) {
-      var packet = packets[i];
-      decoded += '\ufffd' + packet.length + '\ufffd' + packets[i];
-    }
-
-    return decoded;
-  };
-
-  /**
-   * Decodes a packet
-   *
-   * @api private
-   */
-
-  var regexp = /([^:]+):([0-9]+)?(\+)?:([^:]+)?:?([\s\S]*)?/;
-
-  parser.decodePacket = function (data) {
-    var pieces = data.match(regexp);
-
-    if (!pieces) return {};
-
-    var id = pieces[2] || ''
-      , data = pieces[5] || ''
-      , packet = {
-            type: packets[pieces[1]]
-          , endpoint: pieces[4] || ''
-        };
-
-    // whether we need to acknowledge the packet
-    if (id) {
-      packet.id = id;
-      if (pieces[3])
-        packet.ack = 'data';
-      else
-        packet.ack = true;
-    }
-
-    // handle different packet types
-    switch (packet.type) {
-      case 'error':
-        var pieces = data.split('+');
-        packet.reason = reasons[pieces[0]] || '';
-        packet.advice = advice[pieces[1]] || '';
-        break;
-
-      case 'message':
-        packet.data = data || '';
-        break;
-
-      case 'event':
-        try {
-          var opts = JSON.parse(data);
-          packet.name = opts.name;
-          packet.args = opts.args;
-        } catch (e) { }
-
-        packet.args = packet.args || [];
-        break;
-
-      case 'json':
-        try {
-          packet.data = JSON.parse(data);
-        } catch (e) { }
-        break;
-
-      case 'connect':
-        packet.qs = data || '';
-        break;
-
-      case 'ack':
-        var pieces = data.match(/^([0-9]+)(\+)?(.*)/);
-        if (pieces) {
-          packet.ackId = pieces[1];
-          packet.args = [];
-
-          if (pieces[3]) {
-            try {
-              packet.args = pieces[3] ? JSON.parse(pieces[3]) : [];
-            } catch (e) { }
-          }
-        }
-        break;
-
-      case 'disconnect':
-      case 'heartbeat':
-        break;
-    };
-
-    return packet;
-  };
-
-  /**
-   * Decodes data payload. Detects multiple messages
-   *
-   * @return {Array} messages
-   * @api public
-   */
-
-  parser.decodePayload = function (data) {
-    // IE doesn't like data[i] for unicode chars, charAt works fine
-    if (data.charAt(0) == '\ufffd') {
-      var ret = [];
-
-      for (var i = 1, length = ''; i < data.length; i++) {
-        if (data.charAt(i) == '\ufffd') {
-          ret.push(parser.decodePacket(data.substr(i + 1).substr(0, length)));
-          i += Number(length) + 1;
-          length = '';
-        } else {
-          length += data.charAt(i);
-        }
-      }
-
-      return ret;
-    } else {
-      return [parser.decodePacket(data)];
-    }
-  };
-
-})(
-    true?module.exports : module.exports
-  , true?module.exports : module.parent.exports
-);
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports.Transport = Transport;
-
-  /**
-   * This is the transport template for all supported transport methods.
-   *
-   * @constructor
-   * @api public
-   */
-
-  function Transport (socket, sessid) {
-    this.socket = socket;
-    this.sessid = sessid;
-  };
-
-  /**
-   * Apply EventEmitter mixin.
-   */
-
-  io.util.mixin(Transport, io.EventEmitter);
-
-  /**
-   * Handles the response from the server. When a new response is received
-   * it will automatically update the timeout, decode the message and
-   * forwards the response to the onMessage function for further processing.
-   *
-   * @param {String} data Response from the server.
-   * @api private
-   */
-
-  Transport.prototype.onData = function (data) {
-    this.clearCloseTimeout();
-    
-    // If the connection in currently open (or in a reopening state) reset the close 
-    // timeout since we have just received data. This check is necessary so
-    // that we don't reset the timeout on an explicitly disconnected connection.
-    if (this.socket.connected || this.socket.connecting || this.socket.reconnecting) {
-      this.setCloseTimeout();
-    }
-
-    if (data !== '') {
-      // todo: we should only do decodePayload for xhr transports
-      var msgs = io.parser.decodePayload(data);
-
-      if (msgs && msgs.length) {
-        for (var i = 0, l = msgs.length; i < l; i++) {
-          this.onPacket(msgs[i]);
-        }
-      }
-    }
-
-    return this;
-  };
-
-  /**
-   * Handles packets.
-   *
-   * @api private
-   */
-
-  Transport.prototype.onPacket = function (packet) {
-    this.socket.setHeartbeatTimeout();
-
-    if (packet.type == 'heartbeat') {
-      return this.onHeartbeat();
-    }
-
-    if (packet.type == 'connect' && packet.endpoint == '') {
-      this.onConnect();
-    }
-
-    if (packet.type == 'error' && packet.advice == 'reconnect') {
-      this.open = false;
-    }
-
-    this.socket.onPacket(packet);
-
-    return this;
-  };
-
-  /**
-   * Sets close timeout
-   *
-   * @api private
-   */
-  
-  Transport.prototype.setCloseTimeout = function () {
-    if (!this.closeTimeout) {
-      var self = this;
-
-      this.closeTimeout = setTimeout(function () {
-        self.onDisconnect();
-      }, this.socket.closeTimeout);
-    }
-  };
-
-  /**
-   * Called when transport disconnects.
-   *
-   * @api private
-   */
-
-  Transport.prototype.onDisconnect = function () {
-    if (this.close && this.open) this.close();
-    this.clearTimeouts();
-    this.socket.onDisconnect();
-    return this;
-  };
-
-  /**
-   * Called when transport connects
-   *
-   * @api private
-   */
-
-  Transport.prototype.onConnect = function () {
-    this.socket.onConnect();
-    return this;
-  }
-
-  /**
-   * Clears close timeout
-   *
-   * @api private
-   */
-
-  Transport.prototype.clearCloseTimeout = function () {
-    if (this.closeTimeout) {
-      clearTimeout(this.closeTimeout);
-      this.closeTimeout = null;
-    }
-  };
-
-  /**
-   * Clear timeouts
-   *
-   * @api private
-   */
-
-  Transport.prototype.clearTimeouts = function () {
-    this.clearCloseTimeout();
-
-    if (this.reopenTimeout) {
-      clearTimeout(this.reopenTimeout);
-    }
-  };
-
-  /**
-   * Sends a packet
-   *
-   * @param {Object} packet object.
-   * @api private
-   */
-
-  Transport.prototype.packet = function (packet) {
-    this.send(io.parser.encodePacket(packet));
-  };
-
-  /**
-   * Send the received heartbeat message back to server. So the server
-   * knows we are still connected.
-   *
-   * @param {String} heartbeat Heartbeat response from the server.
-   * @api private
-   */
-
-  Transport.prototype.onHeartbeat = function (heartbeat) {
-    this.packet({ type: 'heartbeat' });
-  };
- 
-  /**
-   * Called when the transport opens.
-   *
-   * @api private
-   */
-
-  Transport.prototype.onOpen = function () {
-    this.open = true;
-    this.clearCloseTimeout();
-    this.socket.onOpen();
-  };
-
-  /**
-   * Notifies the base when the connection with the Socket.IO server
-   * has been disconnected.
-   *
-   * @api private
-   */
-
-  Transport.prototype.onClose = function () {
-    var self = this;
-
-    /* FIXME: reopen delay causing a infinit loop
-    this.reopenTimeout = setTimeout(function () {
-      self.open();
-    }, this.socket.options['reopen delay']);*/
-
-    this.open = false;
-    this.socket.onClose();
-    this.onDisconnect();
-  };
-
-  /**
-   * Generates a connection url based on the Socket.IO URL Protocol.
-   * See <https://github.com/learnboost/socket.io-node/> for more details.
-   *
-   * @returns {String} Connection url
-   * @api private
-   */
-
-  Transport.prototype.prepareUrl = function () {
-    var options = this.socket.options;
-
-    return this.scheme() + '://'
-      + options.host + ':' + options.port + '/'
-      + options.resource + '/' + io.protocol
-      + '/' + this.name + '/' + this.sessid;
-  };
-
-  /**
-   * Checks if the transport is ready to start a connection.
-   *
-   * @param {Socket} socket The socket instance that needs a transport
-   * @param {Function} fn The callback
-   * @api private
-   */
-
-  Transport.prototype.ready = function (socket, fn) {
-    fn.call(this);
-  };
-})(
-    true?module.exports : module.exports
-  , true?module.exports : module.parent.exports
-);
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io, global) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports.Socket = Socket;
-
-  /**
-   * Create a new `Socket.IO client` which can establish a persistent
-   * connection with a Socket.IO enabled server.
-   *
-   * @api public
-   */
-
-  function Socket (options) {
-    this.options = {
-        port: 80
-      , secure: false
-      , document: 'document' in global ? document : false
-      , resource: 'socket.io'
-      , transports: io.transports
-      , 'connect timeout': 10000
-      , 'try multiple transports': true
-      , 'reconnect': true
-      , 'reconnection delay': 500
-      , 'reconnection limit': Infinity
-      , 'reopen delay': 3000
-      , 'max reconnection attempts': 10
-      , 'sync disconnect on unload': true
-      , 'auto connect': true
-      , 'flash policy port': 10843
-    };
-
-    io.util.merge(this.options, options);
-
-    this.connected = false;
-    this.open = false;
-    this.connecting = false;
-    this.reconnecting = false;
-    this.namespaces = {};
-    this.buffer = [];
-    this.doBuffer = false;
-
-    if (this.options['sync disconnect on unload'] &&
-        (!this.isXDomain() || io.util.ua.hasCORS)) {
-      var self = this;
-
-      io.util.on(global, 'unload', function () {
-        self.disconnectSync();
-      }, false);
-    }
-
-    if (this.options['auto connect']) {
-      this.connect();
-    }
-};
-
-  /**
-   * Apply EventEmitter mixin.
-   */
-
-  io.util.mixin(Socket, io.EventEmitter);
-
-  /**
-   * Returns a namespace listener/emitter for this socket
-   *
-   * @api public
-   */
-
-  Socket.prototype.of = function (name) {
-    if (!this.namespaces[name]) {
-      this.namespaces[name] = new io.SocketNamespace(this, name);
-
-      if (name !== '') {
-        this.namespaces[name].packet({ type: 'connect' });
-      }
-    }
-
-    return this.namespaces[name];
-  };
-
-  /**
-   * Emits the given event to the Socket and all namespaces
-   *
-   * @api private
-   */
-
-  Socket.prototype.publish = function () {
-    this.emit.apply(this, arguments);
-
-    var nsp;
-
-    for (var i in this.namespaces) {
-      if (this.namespaces.hasOwnProperty(i)) {
-        nsp = this.of(i);
-        nsp.$emit.apply(nsp, arguments);
-      }
-    }
-  };
-
-  /**
-   * Performs the handshake
-   *
-   * @api private
-   */
-
-  function empty () { };
-
-  Socket.prototype.handshake = function (fn) {
-    var self = this
-      , options = this.options;
-
-    function complete (data) {
-      if (data instanceof Error) {
-        self.onError(data.message);
-      } else {
-        fn.apply(null, data.split(':'));
-      }
-    };
-
-    var url = [
-          'http' + (options.secure ? 's' : '') + ':/'
-        , options.host + ':' + options.port
-        , options.resource
-        , io.protocol
-        , io.util.query(this.options.query, 't=' + +new Date)
-      ].join('/');
-
-    if (this.isXDomain() && !io.util.ua.hasCORS) {
-      var insertAt = document.getElementsByTagName('script')[0]
-        , script = document.createElement('script');
-
-      script.src = url + '&jsonp=' + io.j.length;
-      insertAt.parentNode.insertBefore(script, insertAt);
-
-      io.j.push(function (data) {
-        complete(data);
-        script.parentNode.removeChild(script);
-      });
-    } else {
-      var xhr = io.util.request();
-
-      xhr.open('GET', url, true);
-      xhr.withCredentials = true;
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState == 4) {
-          xhr.onreadystatechange = empty;
-
-          if (xhr.status == 200) {
-            complete(xhr.responseText);
-          } else {
-            !self.reconnecting && self.onError(xhr.responseText);
-          }
-        }
-      };
-      xhr.send(null);
-    }
-  };
-
-  /**
-   * Find an available transport based on the options supplied in the constructor.
-   *
-   * @api private
-   */
-
-  Socket.prototype.getTransport = function (override) {
-    var transports = override || this.transports, match;
-
-    for (var i = 0, transport; transport = transports[i]; i++) {
-      if (io.Transport[transport]
-        && io.Transport[transport].check(this)
-        && (!this.isXDomain() || io.Transport[transport].xdomainCheck())) {
-        return new io.Transport[transport](this, this.sessionid);
-      }
-    }
-
-    return null;
-  };
-
-  /**
-   * Connects to the server.
-   *
-   * @param {Function} [fn] Callback.
-   * @returns {io.Socket}
-   * @api public
-   */
-
-  Socket.prototype.connect = function (fn) {
-    if (this.connecting) {
-      return this;
-    }
-
-    var self = this;
-
-    this.handshake(function (sid, heartbeat, close, transports) {
-      self.sessionid = sid;
-      self.closeTimeout = close * 1000;
-      self.heartbeatTimeout = heartbeat * 1000;
-      self.transports = transports ? io.util.intersect(
-          transports.split(',')
-        , self.options.transports
-      ) : self.options.transports;
-
-      self.setHeartbeatTimeout();
-
-      function connect (transports){
-        if (self.transport) self.transport.clearTimeouts();
-
-        self.transport = self.getTransport(transports);
-        if (!self.transport) return self.publish('connect_failed');
-
-        // once the transport is ready
-        self.transport.ready(self, function () {
-          self.connecting = true;
-          self.publish('connecting', self.transport.name);
-          self.transport.open();
-
-          if (self.options['connect timeout']) {
-            self.connectTimeoutTimer = setTimeout(function () {
-              if (!self.connected) {
-                self.connecting = false;
-
-                if (self.options['try multiple transports']) {
-                  if (!self.remainingTransports) {
-                    self.remainingTransports = self.transports.slice(0);
-                  }
-
-                  var remaining = self.remainingTransports;
-
-                  while (remaining.length > 0 && remaining.splice(0,1)[0] !=
-                         self.transport.name) {}
-
-                    if (remaining.length){
-                      connect(remaining);
-                    } else {
-                      self.publish('connect_failed');
-                    }
-                }
-              }
-            }, self.options['connect timeout']);
-          }
-        });
-      }
-
-      connect(self.transports);
-
-      self.once('connect', function (){
-        clearTimeout(self.connectTimeoutTimer);
-
-        fn && typeof fn == 'function' && fn();
-      });
-    });
-
-    return this;
-  };
-
-  /**
-   * Clears and sets a new heartbeat timeout using the value given by the
-   * server during the handshake.
-   *
-   * @api private
-   */
-
-  Socket.prototype.setHeartbeatTimeout = function () {
-    clearTimeout(this.heartbeatTimeoutTimer);
-
-    var self = this;
-    this.heartbeatTimeoutTimer = setTimeout(function () {
-      self.transport.onClose();
-    }, this.heartbeatTimeout);
-  };
-
-  /**
-   * Sends a message.
-   *
-   * @param {Object} data packet.
-   * @returns {io.Socket}
-   * @api public
-   */
-
-  Socket.prototype.packet = function (data) {
-    if (this.connected && !this.doBuffer) {
-      this.transport.packet(data);
-    } else {
-      this.buffer.push(data);
-    }
-
-    return this;
-  };
-
-  /**
-   * Sets buffer state
-   *
-   * @api private
-   */
-
-  Socket.prototype.setBuffer = function (v) {
-    this.doBuffer = v;
-
-    if (!v && this.connected && this.buffer.length) {
-      this.transport.payload(this.buffer);
-      this.buffer = [];
-    }
-  };
-
-  /**
-   * Disconnect the established connect.
-   *
-   * @returns {io.Socket}
-   * @api public
-   */
-
-  Socket.prototype.disconnect = function () {
-    if (this.connected || this.connecting) {
-      if (this.open) {
-        this.of('').packet({ type: 'disconnect' });
-      }
-
-      // handle disconnection immediately
-      this.onDisconnect('booted');
-    }
-
-    return this;
-  };
-
-  /**
-   * Disconnects the socket with a sync XHR.
-   *
-   * @api private
-   */
-
-  Socket.prototype.disconnectSync = function () {
-    // ensure disconnection
-    var xhr = io.util.request()
-      , uri = this.resource + '/' + io.protocol + '/' + this.sessionid;
-
-    xhr.open('GET', uri, true);
-
-    // handle disconnection immediately
-    this.onDisconnect('booted');
-  };
-
-  /**
-   * Check if we need to use cross domain enabled transports. Cross domain would
-   * be a different port or different domain name.
-   *
-   * @returns {Boolean}
-   * @api private
-   */
-
-  Socket.prototype.isXDomain = function () {
-
-    var port = global.location.port ||
-      ('https:' == global.location.protocol ? 443 : 80);
-
-    return this.options.host !== global.location.hostname 
-      || this.options.port != port;
-  };
-
-  /**
-   * Called upon handshake.
-   *
-   * @api private
-   */
-
-  Socket.prototype.onConnect = function () {
-    if (!this.connected) {
-      this.connected = true;
-      this.connecting = false;
-      if (!this.doBuffer) {
-        // make sure to flush the buffer
-        this.setBuffer(false);
-      }
-      this.emit('connect');
-    }
-  };
-
-  /**
-   * Called when the transport opens
-   *
-   * @api private
-   */
-
-  Socket.prototype.onOpen = function () {
-    this.open = true;
-  };
-
-  /**
-   * Called when the transport closes.
-   *
-   * @api private
-   */
-
-  Socket.prototype.onClose = function () {
-    this.open = false;
-    clearTimeout(this.heartbeatTimeoutTimer);
-  };
-
-  /**
-   * Called when the transport first opens a connection
-   *
-   * @param text
-   */
-
-  Socket.prototype.onPacket = function (packet) {
-    this.of(packet.endpoint).onPacket(packet);
-  };
-
-  /**
-   * Handles an error.
-   *
-   * @api private
-   */
-
-  Socket.prototype.onError = function (err) {
-    if (err && err.advice) {
-      if (err.advice === 'reconnect' && (this.connected || this.connecting)) {
-        this.disconnect();
-        if (this.options.reconnect) {
-          this.reconnect();
-        }
-      }
-    }
-
-    this.publish('error', err && err.reason ? err.reason : err);
-  };
-
-  /**
-   * Called when the transport disconnects.
-   *
-   * @api private
-   */
-
-  Socket.prototype.onDisconnect = function (reason) {
-    var wasConnected = this.connected
-      , wasConnecting = this.connecting;
-
-    this.connected = false;
-    this.connecting = false;
-    this.open = false;
-
-    if (wasConnected || wasConnecting) {
-      this.transport.close();
-      this.transport.clearTimeouts();
-      if (wasConnected) {
-        this.publish('disconnect', reason);
-
-        if ('booted' != reason && this.options.reconnect && !this.reconnecting) {
-          this.reconnect();
-        }
-      }
-    }
-  };
-
-  /**
-   * Called upon reconnection.
-   *
-   * @api private
-   */
-
-  Socket.prototype.reconnect = function () {
-    this.reconnecting = true;
-    this.reconnectionAttempts = 0;
-    this.reconnectionDelay = this.options['reconnection delay'];
-
-    var self = this
-      , maxAttempts = this.options['max reconnection attempts']
-      , tryMultiple = this.options['try multiple transports']
-      , limit = this.options['reconnection limit'];
-
-    function reset () {
-      if (self.connected) {
-        for (var i in self.namespaces) {
-          if (self.namespaces.hasOwnProperty(i) && '' !== i) {
-              self.namespaces[i].packet({ type: 'connect' });
-          }
-        }
-        self.publish('reconnect', self.transport.name, self.reconnectionAttempts);
-      }
-
-      clearTimeout(self.reconnectionTimer);
-
-      self.removeListener('connect_failed', maybeReconnect);
-      self.removeListener('connect', maybeReconnect);
-
-      self.reconnecting = false;
-
-      delete self.reconnectionAttempts;
-      delete self.reconnectionDelay;
-      delete self.reconnectionTimer;
-      delete self.redoTransports;
-
-      self.options['try multiple transports'] = tryMultiple;
-    };
-
-    function maybeReconnect () {
-      if (!self.reconnecting) {
-        return;
-      }
-
-      if (self.connected) {
-        return reset();
-      };
-
-      if (self.connecting && self.reconnecting) {
-        return self.reconnectionTimer = setTimeout(maybeReconnect, 1000);
-      }
-
-      if (self.reconnectionAttempts++ >= maxAttempts) {
-        if (!self.redoTransports) {
-          self.on('connect_failed', maybeReconnect);
-          self.options['try multiple transports'] = true;
-          self.transport = self.getTransport();
-          self.redoTransports = true;
-          self.connect();
-        } else {
-          self.publish('reconnect_failed');
-          reset();
-        }
-      } else {
-        if (self.reconnectionDelay < limit) {
-          self.reconnectionDelay *= 2; // exponential back off
-        }
-
-        self.connect();
-        self.publish('reconnecting', self.reconnectionDelay, self.reconnectionAttempts);
-        self.reconnectionTimer = setTimeout(maybeReconnect, self.reconnectionDelay);
-      }
-    };
-
-    this.options['try multiple transports'] = false;
-    this.reconnectionTimer = setTimeout(maybeReconnect, this.reconnectionDelay);
-
-    this.on('connect', maybeReconnect);
-  };
-
-})(
-    true?module.exports : module.exports
-  , true?module.exports : module.parent.exports
-  , this
-);
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports.SocketNamespace = SocketNamespace;
-
-  /**
-   * Socket namespace constructor.
-   *
-   * @constructor
-   * @api public
-   */
-
-  function SocketNamespace (socket, name) {
-    this.socket = socket;
-    this.name = name || '';
-    this.flags = {};
-    this.json = new Flag(this, 'json');
-    this.ackPackets = 0;
-    this.acks = {};
-  };
-
-  /**
-   * Apply EventEmitter mixin.
-   */
-
-  io.util.mixin(SocketNamespace, io.EventEmitter);
-
-  /**
-   * Copies emit since we override it
-   *
-   * @api private
-   */
-
-  SocketNamespace.prototype.$emit = io.EventEmitter.prototype.emit;
-
-  /**
-   * Creates a new namespace, by proxying the request to the socket. This
-   * allows us to use the synax as we do on the server.
-   *
-   * @api public
-   */
-
-  SocketNamespace.prototype.of = function () {
-    return this.socket.of.apply(this.socket, arguments);
-  };
-
-  /**
-   * Sends a packet.
-   *
-   * @api private
-   */
-
-  SocketNamespace.prototype.packet = function (packet) {
-    packet.endpoint = this.name;
-    this.socket.packet(packet);
-    this.flags = {};
-    return this;
-  };
-
-  /**
-   * Sends a message
-   *
-   * @api public
-   */
-
-  SocketNamespace.prototype.send = function (data, fn) {
-    var packet = {
-        type: this.flags.json ? 'json' : 'message'
-      , data: data
-    };
-
-    if ('function' == typeof fn) {
-      packet.id = ++this.ackPackets;
-      packet.ack = true;
-      this.acks[packet.id] = fn;
-    }
-
-    return this.packet(packet);
-  };
-
-  /**
-   * Emits an event
-   *
-   * @api public
-   */
-  
-  SocketNamespace.prototype.emit = function (name) {
-    var args = Array.prototype.slice.call(arguments, 1)
-      , lastArg = args[args.length - 1]
-      , packet = {
-            type: 'event'
-          , name: name
-        };
-
-    if ('function' == typeof lastArg) {
-      packet.id = ++this.ackPackets;
-      packet.ack = 'data';
-      this.acks[packet.id] = lastArg;
-      args = args.slice(0, args.length - 1);
-    }
-
-    packet.args = args;
-
-    return this.packet(packet);
-  };
-
-  /**
-   * Disconnects the namespace
-   *
-   * @api private
-   */
-
-  SocketNamespace.prototype.disconnect = function () {
-    if (this.name === '') {
-      this.socket.disconnect();
-    } else {
-      this.packet({ type: 'disconnect' });
-      this.$emit('disconnect');
-    }
-
-    return this;
-  };
-
-  /**
-   * Handles a packet
-   *
-   * @api private
-   */
-
-  SocketNamespace.prototype.onPacket = function (packet) {
-    var self = this;
-
-    function ack () {
-      self.packet({
-          type: 'ack'
-        , args: io.util.toArray(arguments)
-        , ackId: packet.id
-      });
-    };
-
-    switch (packet.type) {
-      case 'connect':
-        this.$emit('connect');
-        break;
-
-      case 'disconnect':
-        if (this.name === '') {
-          this.socket.onDisconnect(packet.reason || 'booted');
-        } else {
-          this.$emit('disconnect', packet.reason);
-        }
-        break;
-
-      case 'message':
-      case 'json':
-        var params = ['message', packet.data];
-
-        if (packet.ack == 'data') {
-          params.push(ack);
-        } else if (packet.ack) {
-          this.packet({ type: 'ack', ackId: packet.id });
-        }
-
-        this.$emit.apply(this, params);
-        break;
-
-      case 'event':
-        var params = [packet.name].concat(packet.args);
-
-        if (packet.ack == 'data')
-          params.push(ack);
-
-        this.$emit.apply(this, params);
-        break;
-
-      case 'ack':
-        if (this.acks[packet.ackId]) {
-          this.acks[packet.ackId].apply(this, packet.args);
-          delete this.acks[packet.ackId];
-        }
-        break;
-
-      case 'error':
-        if (packet.advice){
-          this.socket.onError(packet);
-        } else {
-          if (packet.reason == 'unauthorized') {
-            this.$emit('connect_failed', packet.reason);
-          } else {
-            this.$emit('error', packet.reason);
-          }
-        }
-        break;
-    }
-  };
-
-  /**
-   * Flag interface.
-   *
-   * @api private
-   */
-
-  function Flag (nsp, name) {
-    this.namespace = nsp;
-    this.name = name;
-  };
-
-  /**
-   * Send a message
-   *
-   * @api public
-   */
-
-  Flag.prototype.send = function () {
-    this.namespace.flags[this.name] = true;
-    this.namespace.send.apply(this.namespace, arguments);
-  };
-
-  /**
-   * Emit an event
-   *
-   * @api public
-   */
-
-  Flag.prototype.emit = function () {
-    this.namespace.flags[this.name] = true;
-    this.namespace.emit.apply(this.namespace, arguments);
-  };
-
-})(
-    true?module.exports : module.exports
-  , true?module.exports : module.parent.exports
-);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io, global) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports.websocket = WS;
-
-  /**
-   * The WebSocket transport uses the HTML5 WebSocket API to establish an
-   * persistent connection with the Socket.IO server. This transport will also
-   * be inherited by the FlashSocket fallback as it provides a API compatible
-   * polyfill for the WebSockets.
-   *
-   * @constructor
-   * @extends {io.Transport}
-   * @api public
-   */
-
-  function WS (socket) {
-    io.Transport.apply(this, arguments);
-  };
-
-  /**
-   * Inherits from Transport.
-   */
-
-  io.util.inherit(WS, io.Transport);
-
-  /**
-   * Transport name
-   *
-   * @api public
-   */
-
-  WS.prototype.name = 'websocket';
-
-  /**
-   * Initializes a new `WebSocket` connection with the Socket.IO server. We attach
-   * all the appropriate listeners to handle the responses from the server.
-   *
-   * @returns {Transport}
-   * @api public
-   */
-
-  WS.prototype.open = function () {
-    var query = io.util.query(this.socket.options.query)
-      , self = this
-      , Socket
-
-
-    if (!Socket) {
-      Socket = global.MozWebSocket || global.WebSocket;
-    }
-
-    this.websocket = new Socket(this.prepareUrl() + query);
-
-    this.websocket.onopen = function () {
-      self.onOpen();
-      self.socket.setBuffer(false);
-    };
-    this.websocket.onmessage = function (ev) {
-      self.onData(ev.data);
-    };
-    this.websocket.onclose = function () {
-      self.onClose();
-      self.socket.setBuffer(true);
-    };
-    this.websocket.onerror = function (e) {
-      self.onError(e);
-    };
-
-    return this;
-  };
-
-  /**
-   * Send a message to the Socket.IO server. The message will automatically be
-   * encoded in the correct message format.
-   *
-   * @returns {Transport}
-   * @api public
-   */
-
-  WS.prototype.send = function (data) {
-    this.websocket.send(data);
-    return this;
-  };
-
-  /**
-   * Payload
-   *
-   * @api private
-   */
-
-  WS.prototype.payload = function (arr) {
-    for (var i = 0, l = arr.length; i < l; i++) {
-      this.packet(arr[i]);
-    }
-    return this;
-  };
-
-  /**
-   * Disconnect the established `WebSocket` connection.
-   *
-   * @returns {Transport}
-   * @api public
-   */
-
-  WS.prototype.close = function () {
-    this.websocket.close();
-    return this;
-  };
-
-  /**
-   * Handle the errors that `WebSocket` might be giving when we
-   * are attempting to connect or send messages.
-   *
-   * @param {Error} e The error.
-   * @api private
-   */
-
-  WS.prototype.onError = function (e) {
-    this.socket.onError(e);
-  };
-
-  /**
-   * Returns the appropriate scheme for the URI generation.
-   *
-   * @api private
-   */
-  WS.prototype.scheme = function () {
-    return this.socket.options.secure ? 'wss' : 'ws';
-  };
-
-  /**
-   * Checks if the browser has support for native `WebSockets` and that
-   * it's not the polyfill created for the FlashSocket transport.
-   *
-   * @return {Boolean}
-   * @api public
-   */
-
-  WS.check = function () {
-    return ('WebSocket' in global && !('__addTask' in WebSocket))
-          || 'MozWebSocket' in global;
-  };
-
-  /**
-   * Check if the `WebSocket` transport support cross domain communications.
-   *
-   * @returns {Boolean}
-   * @api public
-   */
-
-  WS.xdomainCheck = function () {
-    return true;
-  };
-
-  /**
-   * Add the transport to your public io.transports array.
-   *
-   * @api private
-   */
-
-  io.transports.push('websocket');
-
-})(
-    true?module.exports.Transport : module.exports
-  , true?module.exports : module.parent.exports
-  , this
-);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io, global) {
-
-  /**
-   * Expose constructor.
-   *
-   * @api public
-   */
-
-  exports.XHR = XHR;
-
-  /**
-   * XHR constructor
-   *
-   * @costructor
-   * @api public
-   */
-
-  function XHR (socket) {
-    if (!socket) return;
-
-    io.Transport.apply(this, arguments);
-    this.sendBuffer = [];
-  };
-
-  /**
-   * Inherits from Transport.
-   */
-
-  io.util.inherit(XHR, io.Transport);
-
-  /**
-   * Establish a connection
-   *
-   * @returns {Transport}
-   * @api public
-   */
-
-  XHR.prototype.open = function () {
-    this.socket.setBuffer(false);
-    this.onOpen();
-    this.get();
-
-    // we need to make sure the request succeeds since we have no indication
-    // whether the request opened or not until it succeeded.
-    this.setCloseTimeout();
-
-    return this;
-  };
-
-  /**
-   * Check if we need to send data to the Socket.IO server, if we have data in our
-   * buffer we encode it and forward it to the `post` method.
-   *
-   * @api private
-   */
-
-  XHR.prototype.payload = function (payload) {
-    var msgs = [];
-
-    for (var i = 0, l = payload.length; i < l; i++) {
-      msgs.push(io.parser.encodePacket(payload[i]));
-    }
-
-    this.send(io.parser.encodePayload(msgs));
-  };
-
-  /**
-   * Send data to the Socket.IO server.
-   *
-   * @param data The message
-   * @returns {Transport}
-   * @api public
-   */
-
-  XHR.prototype.send = function (data) {
-    this.post(data);
-    return this;
-  };
-
-  /**
-   * Posts a encoded message to the Socket.IO server.
-   *
-   * @param {String} data A encoded message.
-   * @api private
-   */
-
-  function empty () { };
-
-  XHR.prototype.post = function (data) {
-    var self = this;
-    this.socket.setBuffer(true);
-
-    function stateChange () {
-      if (this.readyState == 4) {
-        this.onreadystatechange = empty;
-        self.posting = false;
-
-        if (this.status == 200){
-          self.socket.setBuffer(false);
-        } else {
-          self.onClose();
-        }
-      }
-    }
-
-    function onload () {
-      this.onload = empty;
-      self.socket.setBuffer(false);
-    };
-
-    this.sendXHR = this.request('POST');
-
-    if (global.XDomainRequest && this.sendXHR instanceof XDomainRequest) {
-      this.sendXHR.onload = this.sendXHR.onerror = onload;
-    } else {
-      this.sendXHR.onreadystatechange = stateChange;
-    }
-
-    this.sendXHR.send(data);
-  };
-
-  /**
-   * Disconnects the established `XHR` connection.
-   *
-   * @returns {Transport}
-   * @api public
-   */
-
-  XHR.prototype.close = function () {
-    this.onClose();
-    return this;
-  };
-
-  /**
-   * Generates a configured XHR request
-   *
-   * @param {String} url The url that needs to be requested.
-   * @param {String} method The method the request should use.
-   * @returns {XMLHttpRequest}
-   * @api private
-   */
-
-  XHR.prototype.request = function (method) {
-    var req = io.util.request(this.socket.isXDomain())
-      , query = io.util.query(this.socket.options.query, 't=' + +new Date);
-
-    req.open(method || 'GET', this.prepareUrl() + query, true);
-
-    if (method == 'POST') {
-      try {
-        if (req.setRequestHeader) {
-          req.setRequestHeader('Content-type', 'text/plain;charset=UTF-8');
-        } else {
-          // XDomainRequest
-          req.contentType = 'text/plain';
-        }
-      } catch (e) {}
-    }
-
-    return req;
-  };
-
-  /**
-   * Returns the scheme to use for the transport URLs.
-   *
-   * @api private
-   */
-
-  XHR.prototype.scheme = function () {
-    return this.socket.options.secure ? 'https' : 'http';
-  };
-
-  /**
-   * Check if the XHR transports are supported
-   *
-   * @param {Boolean} xdomain Check if we support cross domain requests.
-   * @returns {Boolean}
-   * @api public
-   */
-
-  XHR.check = function (socket, xdomain) {
-    try {
-      var request = io.util.request(xdomain),
-          usesXDomReq = (global.XDomainRequest && request instanceof XDomainRequest),
-          socketProtocol = (socket && socket.options && socket.options.secure ? 'https:' : 'http:'),
-          isXProtocol = (socketProtocol != global.location.protocol);
-      if (request && !(usesXDomReq && isXProtocol)) {
-        return true;
-      }
-    } catch(e) {}
-
-    return false;
-  };
-
-  /**
-   * Check if the XHR transport supports cross domain requests.
-   *
-   * @returns {Boolean}
-   * @api public
-   */
-
-  XHR.xdomainCheck = function () {
-    return XHR.check(null, true);
-  };
-
-})(
-    true?module.exports.Transport : module.exports
-  , true?module.exports : module.parent.exports
-  , this
-);
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports.htmlfile = HTMLFile;
-
-  /**
-   * The HTMLFile transport creates a `forever iframe` based transport
-   * for Internet Explorer. Regular forever iframe implementations will 
-   * continuously trigger the browsers buzy indicators. If the forever iframe
-   * is created inside a `htmlfile` these indicators will not be trigged.
-   *
-   * @constructor
-   * @extends {io.Transport.XHR}
-   * @api public
-   */
-
-  function HTMLFile (socket) {
-    io.Transport.XHR.apply(this, arguments);
-  };
-
-  /**
-   * Inherits from XHR transport.
-   */
-
-  io.util.inherit(HTMLFile, io.Transport.XHR);
-
-  /**
-   * Transport name
-   *
-   * @api public
-   */
-
-  HTMLFile.prototype.name = 'htmlfile';
-
-  /**
-   * Creates a new Ac...eX `htmlfile` with a forever loading iframe
-   * that can be used to listen to messages. Inside the generated
-   * `htmlfile` a reference will be made to the HTMLFile transport.
-   *
-   * @api private
-   */
-
-  HTMLFile.prototype.get = function () {
-    this.doc = new window[(['Active'].concat('Object').join('X'))]('htmlfile');
-    this.doc.open();
-    this.doc.write('<html></html>');
-    this.doc.close();
-    this.doc.parentWindow.s = this;
-
-    var iframeC = this.doc.createElement('div');
-    iframeC.className = 'socketio';
-
-    this.doc.body.appendChild(iframeC);
-    this.iframe = this.doc.createElement('iframe');
-
-    iframeC.appendChild(this.iframe);
-
-    var self = this
-      , query = io.util.query(this.socket.options.query, 't='+ +new Date);
-
-    this.iframe.src = this.prepareUrl() + query;
-
-    io.util.on(window, 'unload', function () {
-      self.destroy();
-    });
-  };
-
-  /**
-   * The Socket.IO server will write script tags inside the forever
-   * iframe, this function will be used as callback for the incoming
-   * information.
-   *
-   * @param {String} data The message
-   * @param {document} doc Reference to the context
-   * @api private
-   */
-
-  HTMLFile.prototype._ = function (data, doc) {
-    this.onData(data);
-    try {
-      var script = doc.getElementsByTagName('script')[0];
-      script.parentNode.removeChild(script);
-    } catch (e) { }
-  };
-
-  /**
-   * Destroy the established connection, iframe and `htmlfile`.
-   * And calls the `CollectGarbage` function of Internet Explorer
-   * to release the memory.
-   *
-   * @api private
-   */
-
-  HTMLFile.prototype.destroy = function () {
-    if (this.iframe){
-      try {
-        this.iframe.src = 'about:blank';
-      } catch(e){}
-
-      this.doc = null;
-      this.iframe.parentNode.removeChild(this.iframe);
-      this.iframe = null;
-
-      CollectGarbage();
-    }
-  };
-
-  /**
-   * Disconnects the established connection.
-   *
-   * @returns {Transport} Chaining.
-   * @api public
-   */
-
-  HTMLFile.prototype.close = function () {
-    this.destroy();
-    return io.Transport.XHR.prototype.close.call(this);
-  };
-
-  /**
-   * Checks if the browser supports this transport. The browser
-   * must have an `Ac...eXObject` implementation.
-   *
-   * @return {Boolean}
-   * @api public
-   */
-
-  HTMLFile.check = function () {
-    if (typeof window != "undefined" && (['Active'].concat('Object').join('X')) in window){
-      try {
-        var a = new window[(['Active'].concat('Object').join('X'))]('htmlfile');
-        return a && io.Transport.XHR.check();
-      } catch(e){}
-    }
-    return false;
-  };
-
-  /**
-   * Check if cross domain requests are supported.
-   *
-   * @returns {Boolean}
-   * @api public
-   */
-
-  HTMLFile.xdomainCheck = function () {
-    // we can probably do handling for sub-domains, we should
-    // test that it's cross domain but a subdomain here
-    return false;
-  };
-
-  /**
-   * Add the transport to your public io.transports array.
-   *
-   * @api private
-   */
-
-  io.transports.push('htmlfile');
-
-})(
-    true?module.exports.Transport : module.exports
-  , true?module.exports : module.parent.exports
-);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io, global) {
-
-  /**
-   * Expose constructor.
-   */
-
-  exports['xhr-polling'] = XHRPolling;
-
-  /**
-   * The XHR-polling transport uses long polling XHR requests to create a
-   * "persistent" connection with the server.
-   *
-   * @constructor
-   * @api public
-   */
-
-  function XHRPolling () {
-    io.Transport.XHR.apply(this, arguments);
-  };
-
-  /**
-   * Inherits from XHR transport.
-   */
-
-  io.util.inherit(XHRPolling, io.Transport.XHR);
-
-  /**
-   * Merge the properties from XHR transport
-   */
-
-  io.util.merge(XHRPolling, io.Transport.XHR);
-
-  /**
-   * Transport name
-   *
-   * @api public
-   */
-
-  XHRPolling.prototype.name = 'xhr-polling';
-
-  /** 
-   * Establish a connection, for iPhone and Android this will be done once the page
-   * is loaded.
-   *
-   * @returns {Transport} Chaining.
-   * @api public
-   */
-
-  XHRPolling.prototype.open = function () {
-    var self = this;
-
-    io.Transport.XHR.prototype.open.call(self);
-    return false;
-  };
-
-  /**
-   * Starts a XHR request to wait for incoming messages.
-   *
-   * @api private
-   */
-
-  function empty () {};
-
-  XHRPolling.prototype.get = function () {
-    if (!this.open) return;
-
-    var self = this;
-
-    function stateChange () {
-      if (this.readyState == 4) {
-        this.onreadystatechange = empty;
-
-        if (this.status == 200) {
-          self.onData(this.responseText);
-          self.get();
-        } else {
-          self.onClose();
-        }
-      }
-    };
-
-    function onload () {
-      this.onload = empty;
-      this.onerror = empty;
-      self.onData(this.responseText);
-      self.get();
-    };
-
-    function onerror () {
-      self.onClose();
-    };
-
-    this.xhr = this.request();
-
-    if (global.XDomainRequest && this.xhr instanceof XDomainRequest) {
-      this.xhr.onload = onload;
-      this.xhr.onerror = onerror;
-    } else {
-      this.xhr.onreadystatechange = stateChange;
-    }
-
-    this.xhr.send(null);
-  };
-
-  /**
-   * Handle the unclean close behavior.
-   *
-   * @api private
-   */
-
-  XHRPolling.prototype.onClose = function () {
-    io.Transport.XHR.prototype.onClose.call(this);
-
-    if (this.xhr) {
-      this.xhr.onreadystatechange = this.xhr.onload = this.xhr.onerror = empty;
-      try {
-        this.xhr.abort();
-      } catch(e){}
-      this.xhr = null;
-    }
-  };
-
-  /**
-   * Webkit based browsers show a infinit spinner when you start a XHR request
-   * before the browsers onload event is called so we need to defer opening of
-   * the transport until the onload event is called. Wrapping the cb in our
-   * defer method solve this.
-   *
-   * @param {Socket} socket The socket instance that needs a transport
-   * @param {Function} fn The callback
-   * @api private
-   */
-
-  XHRPolling.prototype.ready = function (socket, fn) {
-    var self = this;
-
-    io.util.defer(function () {
-      fn.call(self);
-    });
-  };
-
-  /**
-   * Add the transport to your public io.transports array.
-   *
-   * @api private
-   */
-
-  io.transports.push('xhr-polling');
-
-})(
-    true?module.exports.Transport : module.exports
-  , true?module.exports : module.parent.exports
-  , this
-);
-
-/**
- * socket.io
- * Copyright(c) 2011 LearnBoost <dev@learnboost.com>
- * MIT Licensed
- */
-
-(function (exports, io, global) {
-  /**
-   * There is a way to hide the loading indicator in Firefox. If you create and
-   * remove a iframe it will stop showing the current loading indicator.
-   * Unfortunately we can't feature detect that and UA sniffing is evil.
-   *
-   * @api private
-   */
-
-  var indicator = global.document && "MozAppearance" in
-    global.document.documentElement.style;
-
-  /**
-   * Expose constructor.
-   */
-
-  exports['jsonp-polling'] = JSONPPolling;
-
-  /**
-   * The JSONP transport creates an persistent connection by dynamically
-   * inserting a script tag in the page. This script tag will receive the
-   * information of the Socket.IO server. When new information is received
-   * it creates a new script tag for the new data stream.
-   *
-   * @constructor
-   * @extends {io.Transport.xhr-polling}
-   * @api public
-   */
-
-  function JSONPPolling (socket) {
-    io.Transport['xhr-polling'].apply(this, arguments);
-
-    this.index = io.j.length;
-
-    var self = this;
-
-    io.j.push(function (msg) {
-      self._(msg);
-    });
-  };
-
-  /**
-   * Inherits from XHR polling transport.
-   */
-
-  io.util.inherit(JSONPPolling, io.Transport['xhr-polling']);
-
-  /**
-   * Transport name
-   *
-   * @api public
-   */
-
-  JSONPPolling.prototype.name = 'jsonp-polling';
-
-  /**
-   * Posts a encoded message to the Socket.IO server using an iframe.
-   * The iframe is used because script tags can create POST based requests.
-   * The iframe is positioned outside of the view so the user does not
-   * notice it's existence.
-   *
-   * @param {String} data A encoded message.
-   * @api private
-   */
-
-  JSONPPolling.prototype.post = function (data) {
-    var self = this
-      , query = io.util.query(
-             this.socket.options.query
-          , 't='+ (+new Date) + '&i=' + this.index
-        );
-
-    if (!this.form) {
-      var form = document.createElement('form')
-        , area = document.createElement('textarea')
-        , id = this.iframeId = 'socketio_iframe_' + this.index
-        , iframe;
-
-      form.className = 'socketio';
-      form.style.position = 'absolute';
-      form.style.top = '0px';
-      form.style.left = '0px';
-      form.style.display = 'none';
-      form.target = id;
-      form.method = 'POST';
-      form.setAttribute('accept-charset', 'utf-8');
-      area.name = 'd';
-      form.appendChild(area);
-      document.body.appendChild(form);
-
-      this.form = form;
-      this.area = area;
-    }
-
-    this.form.action = this.prepareUrl() + query;
-
-    function complete () {
-      initIframe();
-      self.socket.setBuffer(false);
-    };
-
-    function initIframe () {
-      if (self.iframe) {
-        self.form.removeChild(self.iframe);
-      }
-
-      try {
-        // ie6 dynamic iframes with target="" support (thanks Chris Lambacher)
-        iframe = document.createElement('<iframe name="'+ self.iframeId +'">');
-      } catch (e) {
-        iframe = document.createElement('iframe');
-        iframe.name = self.iframeId;
-      }
-
-      iframe.id = self.iframeId;
-
-      self.form.appendChild(iframe);
-      self.iframe = iframe;
-    };
-
-    initIframe();
-
-    // we temporarily stringify until we figure out how to prevent
-    // browsers from turning `\n` into `\r\n` in form inputs
-    this.area.value = io.JSON.stringify(data);
-
-    try {
-      this.form.submit();
-    } catch(e) {}
-
-    if (this.iframe.attachEvent) {
-      iframe.onreadystatechange = function () {
-        if (self.iframe.readyState == 'complete') {
-          complete();
-        }
-      };
-    } else {
-      this.iframe.onload = complete;
-    }
-
-    this.socket.setBuffer(true);
-  };
-  
-  /**
-   * Creates a new JSONP poll that can be used to listen
-   * for messages from the Socket.IO server.
-   *
-   * @api private
-   */
-
-  JSONPPolling.prototype.get = function () {
-    var self = this
-      , script = document.createElement('script')
-      , query = io.util.query(
-             this.socket.options.query
-          , 't='+ (+new Date) + '&i=' + this.index
-        );
-
-    if (this.script) {
-      this.script.parentNode.removeChild(this.script);
-      this.script = null;
-    }
-
-    script.async = true;
-    script.src = this.prepareUrl() + query;
-    script.onerror = function () {
-      self.onClose();
-    };
-
-    var insertAt = document.getElementsByTagName('script')[0]
-    insertAt.parentNode.insertBefore(script, insertAt);
-    this.script = script;
-
-    if (indicator) {
-      setTimeout(function () {
-        var iframe = document.createElement('iframe');
-        document.body.appendChild(iframe);
-        document.body.removeChild(iframe);
-      }, 100);
-    }
-  };
-
-  /**
-   * Callback function for the incoming message stream from the Socket.IO server.
-   *
-   * @param {String} data The message
-   * @api private
-   */
-
-  JSONPPolling.prototype._ = function (msg) {
-    this.onData(msg);
-    if (this.open) {
-      this.get();
-    }
-    return this;
-  };
-
-  /**
-   * The indicator hack only works after onload
-   *
-   * @param {Socket} socket The socket instance that needs a transport
-   * @param {Function} fn The callback
-   * @api private
-   */
-
-  JSONPPolling.prototype.ready = function (socket, fn) {
-    var self = this;
-    if (!indicator) return fn.call(this);
-
-    io.util.load(function () {
-      fn.call(self);
-    });
-  };
-
-  /**
-   * Checks if browser supports this transport.
-   *
-   * @return {Boolean}
-   * @api public
-   */
-
-  JSONPPolling.check = function () {
-    return 'document' in global;
-  };
-
-  /**
-   * Check if cross domain requests are supported
-   *
-   * @returns {Boolean}
-   * @api public
-   */
-
-  JSONPPolling.xdomainCheck = function () {
-    return true;
-  };
-
-  /**
-   * Add the transport to your public io.transports array.
-   *
-   * @api private
-   */
-
-  io.transports.push('jsonp-polling');
-
-})(
-    true?module.exports.Transport : module.exports
-  , true?module.exports : module.parent.exports
-  , this
-);
-
 });
 
 // file: lib/common/plugin/requestFileSystem.js
@@ -8197,5 +8037,13 @@ window.cordova = require('cordova');
 
 }(window));
 
+// file: lib/scripts/bootstrap-proxy.js
+var globalConfigProperty = 'cordovaProxyConfig';
+var globalConfig = window[globalConfigProperty];
+if (!globalConfig) {
+    throw new Error("Cordova-Proxy init error: Please set the global property "+globalConfig+'. E.g. {url: "http://localhost:8080", channel: "default"}');
+}
+
+require('cordova/exec').connect(globalConfig);
 
 })();

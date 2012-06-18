@@ -28,6 +28,8 @@
 	var socketio = cordova.require('cordova/plugin/proxy/socket.io.client');
 	socketio.connect = jasmine.createSpy('connect').andReturn(clientSocket);
 	cordova.require('cordova/exec').connect('http://someAddr', 'someChannel');
+	cordova.require('cordova/channel').onDeviceReady.fire();
+
 
 	window.io = {
 		connect: jasmine.createSpy('connect').andReturn(appSocket)

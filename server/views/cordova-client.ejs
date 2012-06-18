@@ -1,7 +1,0 @@
-// Javascript to be loaded by the client application using cordova.
-
-<%- partial('partials/cordova-proxy/cordova.proxy.js') %>
-
-cordova.require('cordova/exec').connect('http://<%= address.address %>:<%= address.port %>', '<%= channel %>');
-
-

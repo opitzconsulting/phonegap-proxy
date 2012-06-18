@@ -86,12 +86,16 @@ function getRemoteFile(url, callback) {
 
 var socket;
 function connect() {
+	
 	console.log("connecting to "+server);
-	socket = io.connect(server);
-
-	socket.on("connect", function() {
-	    socket.emit("device", channel, window.device);
+	socket = cometd.connect({
+		url: server
+	}, function(socket) {
+		window.device.channel = channel;
+	    socket.publish("/device/"+channel, window.device);
 	});
+
+	socket.subscribe("/exec/"+channel, onExecMessage);
 
 	function createCallback(callbackId, delegateCallbackId, success) {
 		return function(message) {
@@ -105,14 +109,16 @@ function connect() {
 				if (cordova.callbacks[delegateCallbackId]) {
 					args.keepCallback = true;
 				}
-				socket.emit("callback", {
-					callbackId: callbackId, success: success, args: args
-				});
+				socket.publish("/callback/"+channel, {
+					callbackId: callbackId, success: success, 
+					args: args
+				});					
 			}, 0);
 		}
 	}
 
-	socket.on('exec', function (command) {
+	function onExecMessage(message) {
+		var command = message.data;
     	var service = execHandlers[command.service];
     	var action = service && service[command.action];
 	    var successCallback, errorCallback
@@ -139,7 +145,7 @@ function connect() {
 	        	errorCallback(errMsg);
 	        }
 	    }
-	});
+	}
 }
 
 function installEventListeners() {
@@ -152,7 +158,7 @@ function installEventListeners() {
 	function addEventHandler(event) {
 		document.addEventListener(event, function(arg) {
 			console.log("event "+event);
-			socket.emit("event", arg);
+			socket.publish("/event/"+channel, arg);
 		}, false);
 	}	
 }
@@ -165,9 +171,6 @@ function disconnect() {
 		return;
 	}
 	socket.disconnect();
-	socket = null;
-	io.j = [];
-	io.sockets = [];
 }
 
 function nameArgs(names, args) {

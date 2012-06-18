@@ -58,7 +58,7 @@ describe('app', function() {
 
 		beforeEach(function() {
 			oldDevice = window.device;
-			someDevice = window.device = 'someDevice';
+			someDevice = window.device = {name: 'someDevice'};
 		});
 
 		afterEach(function() {
@@ -86,7 +86,8 @@ describe('app', function() {
 			channel(someChannel);
 			connected(true);
 			appSocket.ons.connect();
-			expect(appSocket.emits.device).toEqual([someChannel,someDevice]);
+			expect(someDevice.channel).toBe(someChannel);
+			expect(appSocket.emits.device[0]).toEqual(someDevice);
 		});
 		
 	});

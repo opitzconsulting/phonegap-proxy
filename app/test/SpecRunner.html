@@ -9,9 +9,8 @@
   <script type="text/javascript" src="jasmine/jasmine.js"></script>
   <script type="text/javascript" src="jasmine/jasmine-html.js"></script>
   <script type="text/javascript" src="cordova-proxy/cordova.proxy.js"></script>
-  <script type="text/javascript" src="socketio.mock.js"></script>
 
-  <script src="jqm/jquery.js"></script>
+  <script src="../src/jqm/jquery.js"></script>
   <script>
   $(document).bind("mobileinit", function(){
       $.mobile.gradeA = function() {
@@ -19,10 +18,12 @@
       };
   });
   </script>
-  <script src="jqm/jquery.mobile.js"></script>
+  <script src="../src/jqm/jquery.mobile.js"></script>
 
   <!-- include source files here... -->
-  <script type="text/javascript" src="app.js"></script>
+  <script type="text/javascript" src="../src/app.js"></script>
+  <!-- Note: socketio.mock needs to be AFTER app.js -->
+  <script type="text/javascript" src="socketio.mock.js"></script>
 
   <!-- include spec files here... -->
   <script type="text/javascript" src="appSpec.js"></script>
