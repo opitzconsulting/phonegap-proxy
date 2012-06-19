@@ -4,7 +4,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">	
 	<link href="bootstrap/css/bootstrap.css" rel="stylesheet">
 	<link href="bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
-	<script type="text/javascript" src="cometd/cometd.js"></script>
+	<script type="text/javascript" src="faye/faye-browser.js"></script>
 	
 	<script type="text/javascript">
 		var deviceListTemplate = function(server, deviceData) {
@@ -26,23 +26,18 @@
 				socket = null;
 			}
 			var server = document.getElementById("server").value;
-	        socket = cometd.connect({
-	        	url: server
-	        });
+	        socket = new Faye.Client(server);
 
 			var listElement = document.getElementById("deviceListBody");
-			socket.subscribe('/listDevicesResult', function(message) {
-				var list = message.data;
-				var html = '';
-				for (var i=0; i<list.length; i++) {
-					html +=deviceListTemplate(server, list[i]);
-				}
-				listElement.innerHTML = html;
-				socket.disconnect();
-				socket = null;
-			});
-            socket.publish('/listDevices');
+			listElement.innerHTML = '';
 
+			var result = socket.subscribe('/findDevicesResult', function(deviceData) {
+				listElement.innerHTML += deviceListTemplate(server, deviceData);
+			});
+			result.callback(function() {
+            	// Do not send the request until the result listener is installed!
+            	socket.publish('/findDevices', {});
+        	});
 		}
 	</script>
 

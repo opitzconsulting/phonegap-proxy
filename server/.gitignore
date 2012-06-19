@@ -1,9 +1,0 @@
-.DS_Store
-
-# Ignore target
-target
-
-.idea
-
-*.iml
-

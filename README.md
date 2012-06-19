@@ -16,9 +16,11 @@ When I started developing with PhoneGap, I realized that the development cycles 
 Features
 -----------
 - Supports iOS, Android and WP7. 
-- Supports all PhoneGap APIs and PhoneGap Events.
-- The app is build using PhoneGap Build and a build script, so it is available for all platforms
-- The server provides download links for every platform, and also allows the app to be installed from the browser of the mobile device (yes, this also works for iOS!).
+- Supports all PhoneGap APIs and PhoneGap Events
+- Uses Cordova-js, the common javascript behind all cordova plattform implementations.
+  The proxy client is an own platform in cordova-js, see here: [https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy]
+- The app can be build using PhoneGap Build (config.xml included)
+- The server is generic and runs on multiple platform (ruby, node, java)
 
 TODOs
 -----------
@@ -28,45 +30,42 @@ TODOs
 Quick Start
 -------------
 
-*Build the app*
+*Configure the server*
+For node.js and ruby use (Faye)[http://faye.jcoglan.com/].
+For java, use (Cometd)[http://docs.cometd.org/reference/#java_server]
 
-1. Get an account at PhoneGap Build: [https://build.phonegap.com/](https://build.phonegap.com/)
-2. Upload sign keys for your user account: [https://build.phonegap.com/people/edit#pane=signing](https://build.phonegap.com/people/edit#pane=signing)
-3. Build the app that will run on your device using PhoneGap Build:
-   `ant buildApp -Dusername<username> -Dpassword=<password> -Dsignkey=<signkey-title>`
+Please note: The server can be the server in which you are developing your app, or it can also be a separate standalone server. PhoneGap Proxy works with both.
 
-*Start the server*
+*Build the app using PhoneGap Build*
 
-`ant runServer`
+1. Zip the directory `app/src`.
+2. Using [PhoneGap Build](https://build.phonegap.com/): Just upload the zip (`config.xml` is already included).
 
-*Install the app on your device*
+*Build the app using a PhoneGap native project*
+1. Rename the `cordova-xyz.js` in the `www` folder into `cordova.js`.
+2. Delete everything in the `www` folder of the native project, except for the `cordova.js`.
+3. Copy everything from `app/src` into the `www` folder.
 
-1. Open the url `http://<server-ip>:8080/` in your mobile browser.
-2. Download the app for your plattform.
+*Start the demo client*
+1. Open the app on your device and enter the server url.
+2. Open the file `clientdemo/index.html`. 
+3. Enter the server url and click `List`. This should show a list of connected devices.
+4. Click on one of the `Demo` links in the list. This should open a new page.
+5. The new page should show details about the device (name, uuid, ...)
+6. Click on the `Take a picture` button. This should take a picture in the device and show it in the browser.
 
-*Start the app on your device*
 
-1. Enter the url of the server: `http://<server-ip>:8080/`
-2. Enter a channel name. Channels are used to allow multiple devices to be used on the same server.
-
-*Check the access from the desktop browser*
-
-1. go to `http://<server-ip>:8080/`
-2. Select a device and click on the `Demo` link. On the new page you should see
-   details about the connected device and should be able to take a picture.
-
-*Build your own phonegap app*
-
-1. include the cordova.js with the url listed on `http://<server-ip>:8080/`, e.g.
-   `<script src="http://someUrl:8080/someChannel/cordova.js">`
-2. develop everything as usual! 
+Creating a client
+--------------------
+See clientdemo/democlient.html
+TODO
 
 
 How it works
 ------------
 The principle is simple: Install a generic app on your device, use desktop browser to develop your app, but with a special cordova.js that will forward all native callouts from the desktop browser to the device.
 
-For this to work I have a small node-js server. The generic app as well as the desktop browser can connect to that server using socket-io, and by this exchange messages. 
+For this to work we use the `Bayeux` protocol (see (http://cometd.org/documentation/bayeux)[http://cometd.org/documentation/bayeux]). This provides pub/sub messaging between any connected clients, without the need of any furhter server programming. Furthermore, there are servers in java, ruby and node.js for this (see above).
 
 The client is an own build of cordova-js, see here: [https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy](https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy). This introduces the new build platform `proxy`. To generate it just call `jake` and get the file `pkg/cordova.proxy.js`. This platform inherits everything from `common`and implements the `cordova/exec` using a remote call to the device using socket.io.
 
@@ -89,18 +88,15 @@ Why not Bada or Playbook?
 - Those platforms do not use `cordova/exec`, so this approach above would require us to 
   dispatch every possible `cordova/exec` call to a valid Cordova API. This is possible, but takes some time...
 
-Why use a java server for socket.io?
+Why not socket.io?
 
-- Almost all our projects are written for JEE, so java seems a good choice. And socket.io seems currently 
-  the best approach for server push. However, it should be very easy to implement a server with node,
-  just have look at the server sources.
+- Almost all our projects are written for JEE, so java needs to be supported.
 
 
 Dependencies:
 ---------------
 - cordova 1.8
-- socket.io client + java implementation of socket.io server (https://github.com/mrniko/netty-socketio)
-- PhoneGap Build
+- faye browser client (http://faye.jcoglan.com/)
 
 License: 
 ------------

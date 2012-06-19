@@ -87,12 +87,13 @@ function getRemoteFile(url, callback) {
 var socket;
 function connect() {
 	
+	window.device.channel = channel;
+
 	console.log("connecting to "+server);
-	socket = cometd.connect({
-		url: server
-	}, function(socket) {
-		window.device.channel = channel;
-	    socket.publish("/device/"+channel, window.device);
+	socket = new Faye.Client(server);
+	
+	socket.subscribe('/findDevices', function() {
+		socket.publish('/findDevicesResult', window.device);
 	});
 
 	socket.subscribe("/exec/"+channel, onExecMessage);
@@ -117,8 +118,7 @@ function connect() {
 		}
 	}
 
-	function onExecMessage(message) {
-		var command = message.data;
+	function onExecMessage(command) {
     	var service = execHandlers[command.service];
     	var action = service && service[command.action];
 	    var successCallback, errorCallback
