@@ -2,16 +2,18 @@
 // Setup
 // ------------------
 var express = require('express');
-var app = express.createServer();
+var app = express();
+var http = require('http');
 var faye = require('faye');
 
-var bayeux = new faye.NodeAdapter({mount: '/faye', timeout: 45});
-bayeux.attach(app);
+app.use(express.static(__dirname));
 
-app.configure('development', function(){
-    app.use(express.static(__dirname));
-});
+var server = http.createServer(app);
+var bayeux = new faye.NodeAdapter({mount: '/faye', timeout: 45});
+bayeux.attach(server);
+
+
 
 var port = 9000;
-app.listen(port);
+server.listen(port);
 console.log("listening on port "+port);

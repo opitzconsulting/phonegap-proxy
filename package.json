@@ -1,0 +1,12 @@
+{
+  "name": "phonegap-proxy",
+  "description": "Proxy for PhoneGap (Cordova) to allow developing in a desktop browser while executing native commands on a a device.",
+  "version": "0.9.0",
+  "private": true,
+  "author": "Tobias Bosch (@tigbro)",
+  "dependencies": {
+    "express": "3.x",
+    "faye": "0.8.x"
+  },
+  "engine": "node 0.8.x"
+}

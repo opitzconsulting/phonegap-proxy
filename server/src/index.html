@@ -3,23 +3,14 @@
 <head>
     <title>Phonegap Proxy</title>
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=0"/>
-    <script type="text/javascript" src="../src/faye/faye-browser.js"></script>
 
-    <link rel="stylesheet" href="../src/jqm/jquery.mobile.css"/>
-    <script src="../src/jqm/jquery.js"></script>
-    <script src="../src/jqm/jquery.mobile.js"></script>
-    <script type="text/javascript">
-    	window.device = {
-    		name: 'test'
-    	};
-    </script>
-    <script src="../src/app.js"></script>
+    <link rel="stylesheet" href="jqm/jquery.mobile.css"/>
 
 </head>
 <body>
 <div data-role="page" id="start">
     <div data-role="content">
-		<h1>Phonegap Proxy</h1>
+		<h1>PhoneGap-Proxy2</h1>
 		<div data-role="fieldcontain">
 			<label for="server">Server</label>
 		    <input type="text" id="server" value=""/>
@@ -33,6 +24,16 @@
 			<input type="checkbox" id="connected">
 		</div>	
     </div>
+
+    <!-- scripts go here -->
+    <script src="cordova.js" type="text/javascript"></script>
+    <script type="text/javascript" src="faye-browser.js"></script>
+    <script src="cordova.proxy.server.js"></script>
+
+    <script src="jqm/jquery.js"></script>
+    <script src="jqm/jquery.mobile.js"></script>
+    <script src="app.js"></script>
+
 </body>
 
 </html>

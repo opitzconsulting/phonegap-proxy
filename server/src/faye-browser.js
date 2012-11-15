@@ -13,10 +13,10 @@ Faye.extend = function(dest, source, overwrite) {
 };
 
 Faye.extend(Faye, {
-  VERSION:          '0.8.2',
+  VERSION:          '0.8.6',
   
   BAYEUX_VERSION:   '1.0',
-  ID_LENGTH:        128,
+  ID_LENGTH:        160,
   JSONP_CALLBACK:   'jsonpcallback',
   CONNECTION_TYPES: ['long-polling', 'cross-origin-long-polling', 'callback-polling', 'websocket', 'eventsource', 'in-process'],
   
@@ -30,7 +30,9 @@ Faye.extend(Faye, {
       var parts  = Math.ceil(bitlength / 32),
           string = '';
       while (parts--) string += this.random(32);
-      return string;
+      var chars = string.split(''), result = '';
+      while (chars.length > 0) result += chars.pop();
+      return result;
     }
     var limit   = Math.pow(2, bitlength) - 1,
         maxSize = limit.toString(36).length,
@@ -715,10 +717,12 @@ Faye.Client = Faye.Class({
   initialize: function(endpoint, options) {
     this.info('New client created for ?', endpoint);
     
+    this._options   = options || {};
     this.endpoint   = endpoint || this.DEFAULT_ENDPOINT;
+    this.endpoints  = this._options.endpoints || {};
+    this.transports = {};
     this._cookies   = Faye.CookieJar && new Faye.CookieJar();
     this._headers   = {};
-    this._options   = options || {};
     this._disabled  = [];
     this.retry      = this._options.retry || this.DEFAULT_RETRY;
     
@@ -893,12 +897,10 @@ Faye.Client = Faye.Class({
   //                                                     * id
   //                                                     * timestamp
   subscribe: function(channel, callback, context) {
-    if (channel instanceof Array) {
-      for (var i = 0, n = channel.length; i < n; i++) {
-        this.subscribe(channel[i], callback, context);
-      }
-      return;
-    }
+    if (channel instanceof Array)
+      return Faye.map(channel, function(c) {
+        return this.subscribe(c, callback, context);
+      }, this);
     
     var subscription = new Faye.Subscription(this, channel, callback, context),
         force        = (callback === true),
@@ -945,12 +947,10 @@ Faye.Client = Faye.Class({
   //                                                     * id
   //                                                     * timestamp
   unsubscribe: function(channel, callback, context) {
-    if (channel instanceof Array) {
-      for (var i = 0, n = channel.length; i < n; i++) {
-        this.unsubscribe(channel[i], callback, context);
-      }
-      return;
-    }
+    if (channel instanceof Array)
+      return Faye.map(channel, function(c) {
+        return this.unsubscribe(c, callback, context);
+      }, this);
     
     var dead = this._channels.unsubscribe(channel, callback, context);
     if (!dead) return;
@@ -1018,6 +1018,8 @@ Faye.Client = Faye.Class({
   
   _selectTransport: function(transportTypes) {
     Faye.Transport.get(this, transportTypes, function(transport) {
+      this.debug('Selected ? transport for ?', transport.connectionType, transport.endpoint);
+      
       this._transport = transport;
       this._transport.cookies = this._cookies;
       this._transport.headers = this._headers;
@@ -1092,17 +1094,16 @@ Faye.Transport = Faye.extend(Faye.Class({
   batching:  true,
 
   initialize: function(client, endpoint) {
-    this.debug('Created new ? transport for ?', this.connectionType, endpoint);
-    this._client   = client;
-    this._endpoint = endpoint;
-    this._outbox   = [];
+    this._client  = client;
+    this.endpoint = endpoint;
+    this._outbox  = [];
   },
   
   close: function() {},
   
   send: function(message, timeout) {
     this.debug('Client ? sending message to ?: ?',
-               this._client._clientId, this._endpoint, message);
+               this._client._clientId, this.endpoint, message);
 
     if (!this.batching) return this.request([message], timeout);
 
@@ -1110,10 +1111,13 @@ Faye.Transport = Faye.extend(Faye.Class({
     this._timeout = timeout;
 
     if (message.channel === Faye.Channel.HANDSHAKE)
-      return this.flush();
+      return this.addTimeout('publish', 0.01, this.flush, this);
 
     if (message.channel === Faye.Channel.CONNECT)
       this._connectMessage = message;
+
+    if (this.shouldFlush && this.shouldFlush(this._outbox))
+      return this.flush();
 
     this.addTimeout('publish', this.MAX_DELAY, this.flush, this);
   },
@@ -1132,7 +1136,7 @@ Faye.Transport = Faye.extend(Faye.Class({
   
   receive: function(responses) {
     this.debug('Client ? received from ?: ?',
-               this._client._clientId, this._endpoint, responses);
+               this._client._clientId, this.endpoint, responses);
     
     for (var i = 0, n = responses.length; i < n; i++) {
       this._client.receiveMessage(responses[i]);
@@ -1152,17 +1156,25 @@ Faye.Transport = Faye.extend(Faye.Class({
   }
   
 }), {
+  MAX_URL_LENGTH: 2048,
+  
   get: function(client, connectionTypes, callback, context) {
     var endpoint = client.endpoint;
     if (connectionTypes === undefined) connectionTypes = this.supportedConnectionTypes();
     
     Faye.asyncEach(this._transports, function(pair, resume) {
-      var connType = pair[0], klass = pair[1];
-      if (Faye.indexOf(connectionTypes, connType) < 0) return resume();
+      var connType     = pair[0], klass = pair[1],
+          connEndpoint = client.endpoints[connType] || endpoint;
       
-      klass.isUsable(endpoint, function(isUsable) {
-        if (isUsable) callback.call(context, new klass(client, endpoint));
-        else resume();
+      if (Faye.indexOf(connectionTypes, connType) < 0) {
+        klass.isUsable(client, connEndpoint, function() {});
+        return resume();
+      }
+      
+      klass.isUsable(client, connEndpoint, function(isUsable) {
+        if (!isUsable) return resume();
+        var transport = klass.hasOwnProperty('create') ? klass.create(client, connEndpoint) : new klass(client, connEndpoint);
+        callback.call(context, transport);
       });
     }, function() {
       throw new Error('Could not find a usable connection type for ' + endpoint);
@@ -1241,7 +1253,7 @@ Faye.URI = Faye.extend(Faye.Class({
     return pairs.join('&');
   },
   
-  isLocal: function() {
+  isSameOrigin: function() {
     var host = Faye.URI.parse(Faye.ENV.location.href);
     
     var external = (host.hostname !== this.hostname) ||
@@ -1253,38 +1265,42 @@ Faye.URI = Faye.extend(Faye.Class({
   
   toURL: function() {
     var query = this.queryString();
-    return this.protocol + this.hostname + ':' + this.port +
-           this.pathname + (query ? '?' + query : '');
+    return this.protocol + '//' + this.hostname + (this.port ? ':' + this.port : '') +
+           this.pathname + (query ? '?' + query : '') + this.hash;
   }
 }), {
   parse: function(url, params) {
     if (typeof url !== 'string') return url;
+    var uri = new this(), parts;
     
-    var location = new this();
-    
-    var consume = function(name, pattern) {
+    var consume = function(name, pattern, infer) {
       url = url.replace(pattern, function(match) {
-        if (match) location[name] = match;
+        uri[name] = match;
         return '';
       });
+      if (uri[name] === undefined)
+        uri[name] = infer ? Faye.ENV.location[name] : '';
     };
-    consume('protocol', /^https?\:\/+/);
-    consume('hostname', /^[^\/\:]+/);
-    consume('port',     /^:[0-9]+/);
     
-    Faye.extend(location, {
-      protocol:   Faye.ENV.location.protocol + '//',
-      hostname:   Faye.ENV.location.hostname,
-      port:       Faye.ENV.location.port
-    }, false);
+    consume('protocol', /^https?\:/,    true);
+    consume('host',     /^\/\/[^\/]+/,  true);
     
-    if (!location.port) location.port = (location.protocol === 'https://') ? '443' : '80';
-    location.port = location.port.replace(/\D/g, '');
+    if (!/^\//.test(url)) url = Faye.ENV.location.pathname.replace(/[^\/]*$/, '') + url;
+    consume('pathname', /^\/[^\?#]*/);
+    consume('search',   /^\?[^#]*/);
+    consume('hash',     /^#.*/);
     
-    var parts = url.split('?'),
-        path  = parts.shift(),
-        query = parts.join('?'),
+    if (/^\/\//.test(uri.host)) {
+      uri.host = uri.host.substr(2);
+      parts = uri.host.split(':');
+      uri.hostname = parts[0];
+      uri.port = parts[1] || '';
+    } else {
+      uri.hostname = Faye.ENV.location.hostname;
+      uri.port = Faye.ENV.location.port;
+    }
     
+    var query = uri.search.replace(/^\?/, ''),
         pairs = query ? query.split('&') : [],
         n     = pairs.length,
         data  = {};
@@ -1295,10 +1311,9 @@ Faye.URI = Faye.extend(Faye.Class({
     }
     if (typeof params === 'object') Faye.extend(data, params);
     
-    location.pathname = path;
-    location.params = data;
+    uri.params = data;
     
-    return location;
+    return uri;
   }
 });
 
@@ -1795,6 +1810,12 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
 
   batching:     false,
   
+  isUsable: function(callback, context) {
+    this.callback(function() { callback.call(context, true) });
+    this.errback(function() { callback.call(context, false) });
+    this.connect();
+  },
+  
   request: function(messages, timeout) {
     if (messages.length === 0) return;
     this._messages = this._messages || {};
@@ -1802,11 +1823,7 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
     for (var i = 0, n = messages.length; i < n; i++) {
       this._messages[messages[i].id] = messages[i];
     }
-    this.withSocket(function(socket) { socket.send(Faye.toJSON(messages)) });
-  },
-  
-  withSocket: function(callback, context) {
-    this.callback(callback, context);
+    this.callback(function(socket) { socket.send(Faye.toJSON(messages)) });
     this.connect();
   },
   
@@ -1817,6 +1834,7 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
   },
   
   connect: function() {
+    if (Faye.Transport.WebSocket._unloaded) return;
     if (this._closed) return;
     
     this._state = this._state || this.UNCONNECTED;
@@ -1825,11 +1843,14 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
     this._state = this.CONNECTING;
     
     var ws = Faye.Transport.WebSocket.getClass();
-    this._socket = new ws(Faye.Transport.WebSocket.getSocketUrl(this._endpoint));
+    if (!ws) return this.setDeferredStatus('failed');
+    
+    this._socket = new ws(Faye.Transport.WebSocket.getSocketUrl(this.endpoint));
     var self = this;
     
     this._socket.onopen = function() {
       self._state = self.CONNECTED;
+      self._everConnected = true;
       self.setDeferredStatus('succeeded', self._socket);
       self.trigger('up');
     };
@@ -1849,6 +1870,7 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
       delete self._socket;
       
       if (wasConnected) return self.resend();
+      if (!self._everConnected) return self.setDeferredStatus('failed');
       
       var retry = self._client.retry * 1000;
       Faye.ENV.setTimeout(function() { self.connect() }, retry);
@@ -1857,12 +1879,11 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
   },
   
   resend: function() {
+    if (!this._messages) return;
     var messages = Faye.map(this._messages, function(id, msg) { return msg });
     this.request(messages);
   }
 }), {
-  WEBSOCKET_TIMEOUT: 1000,
-  
   getSocketUrl: function(endpoint) {
     if (Faye.URI) endpoint = Faye.URI.parse(endpoint).toURL();
     return endpoint.replace(/^http(s?):/ig, 'ws$1:');
@@ -1874,57 +1895,62 @@ Faye.Transport.WebSocket = Faye.extend(Faye.Class(Faye.Transport, {
             Faye.ENV.MozWebSocket;
   },
   
-  isUsable: function(endpoint, callback, context) {
-    var ws = this.getClass();
-    if (!ws) return callback.call(context, false);
-    
-    var connected = false,
-        called    = false,
-        socketUrl = this.getSocketUrl(endpoint),
-        socket    = new ws(socketUrl);
-    
-    socket.onopen = function() {
-      connected = true;
-      socket.close();
-      callback.call(context, true);
-      called = true;
-      socket = null;
-    };
-    
-    var notconnected = function() {
-      if (!called && !connected) callback.call(context, false);
-      called = true;
-    };
-    
-    socket.onclose = socket.onerror = notconnected;
-    Faye.ENV.setTimeout(notconnected, this.WEBSOCKET_TIMEOUT);
+  isUsable: function(client, endpoint, callback, context) {
+    this.create(client, endpoint).isUsable(callback, context);
+  },
+  
+  create: function(client, endpoint) {
+    var sockets = client.transports.websocket = client.transports.websocket || {};
+    sockets[endpoint] = sockets[endpoint] || new this(client, endpoint);
+    return sockets[endpoint];
   }
 });
 
 Faye.extend(Faye.Transport.WebSocket.prototype, Faye.Deferrable);
 Faye.Transport.register('websocket', Faye.Transport.WebSocket);
 
+if (Faye.Event)
+  Faye.Event.on(Faye.ENV, 'beforeunload', function() {
+    Faye.Transport.WebSocket._unloaded = true;
+  });
+
+
 Faye.Transport.EventSource = Faye.extend(Faye.Class(Faye.Transport, {
   initialize: function(client, endpoint) {
     Faye.Transport.prototype.initialize.call(this, client, endpoint);
+    if (!Faye.ENV.EventSource) return this.setDeferredStatus('failed');
+    
     this._xhr = new Faye.Transport.XHR(client, endpoint);
     
     var socket = new EventSource(endpoint + '/' + client.getClientId()),
         self   = this;
     
     socket.onopen = function() {
+      self._everConnected = true;
+      self.setDeferredStatus('succeeded');
       self.trigger('up');
     };
     
     socket.onerror = function() {
-      self.trigger('down');
+      if (self._everConnected) {
+        self.trigger('down');
+      } else {
+        self.setDeferredStatus('failed');
+        socket.close();
+      }
     };
     
     socket.onmessage = function(event) {
       self.receive(JSON.parse(event.data));
+      self.trigger('up');
     };
     
     this._socket = socket;
+  },
+  
+  isUsable: function(callback, context) {
+    this.callback(function() { callback.call(context, true) });
+    this.errback(function() { callback.call(context, false) });
   },
   
   request: function(message, timeout) {
@@ -1935,20 +1961,31 @@ Faye.Transport.EventSource = Faye.extend(Faye.Class(Faye.Transport, {
     this._socket.close();
   }
 }), {
-  isUsable: function(endpoint, callback, context) {
-    Faye.Transport.XHR.isUsable(endpoint, function(usable) {
-      callback.call(context, usable && Faye.ENV.EventSource);
-    });
+  isUsable: function(client, endpoint, callback, context) {
+    var id = client.getClientId();
+    if (!id) return callback.call(context, false);
+    
+    Faye.Transport.XHR.isUsable(client, endpoint, function(usable) {
+      if (!usable) return callback.call(context, false);
+      this.create(client, endpoint).isUsable(callback, context);
+    }, this);
+  },
+  
+  create: function(client, endpoint) {
+    var sockets = client.transports.eventsource = client.transports.eventsource || {};
+    sockets[endpoint] = sockets[endpoint] || new this(client, endpoint);
+    return sockets[endpoint];
   }
 });
 
+Faye.extend(Faye.Transport.EventSource.prototype, Faye.Deferrable);
 Faye.Transport.register('eventsource', Faye.Transport.EventSource);
 
 
 Faye.Transport.XHR = Faye.extend(Faye.Class(Faye.Transport, {
   request: function(message, timeout) {
     var retry = this.retry(message, timeout),
-        path  = Faye.URI.parse(this._endpoint).pathname,
+        path  = Faye.URI.parse(this.endpoint).pathname,
         self  = this,
         xhr   = Faye.ENV.ActiveXObject
               ? new ActiveXObject("Microsoft.XMLHTTP")
@@ -1956,6 +1993,7 @@ Faye.Transport.XHR = Faye.extend(Faye.Class(Faye.Transport, {
     
     xhr.open('POST', path, true);
     xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Pragma', 'no-cache');
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     
     var headers = this.headers;
@@ -2006,8 +2044,8 @@ Faye.Transport.XHR = Faye.extend(Faye.Class(Faye.Transport, {
     xhr.send(Faye.toJSON(message));
   }
 }), {
-  isUsable: function(endpoint, callback, context) {
-    callback.call(context, Faye.URI.parse(endpoint).isLocal());
+  isUsable: function(client, endpoint, callback, context) {
+    callback.call(context, Faye.URI.parse(endpoint).isSameOrigin());
   }
 });
 
@@ -2020,7 +2058,8 @@ Faye.Transport.CORS = Faye.extend(Faye.Class(Faye.Transport, {
         retry    = this.retry(message, timeout),
         self     = this;
     
-    xhr.open('POST', this._endpoint, true);
+    xhr.open('POST', this.endpoint, true);
+    if (xhr.setRequestHeader) xhr.setRequestHeader('Pragma', 'no-cache');
     
     var cleanUp = function() {
       if (!xhr) return false;
@@ -2060,12 +2099,13 @@ Faye.Transport.CORS = Faye.extend(Faye.Class(Faye.Transport, {
     xhr.send('message=' + encodeURIComponent(Faye.toJSON(message)));
   }
 }), {
-  isUsable: function(endpoint, callback, context) {
-    if (Faye.URI.parse(endpoint).isLocal())
+  isUsable: function(client, endpoint, callback, context) {
+    if (Faye.URI.parse(endpoint).isSameOrigin())
       return callback.call(context, false);
     
     if (Faye.ENV.XDomainRequest)
-      return callback.call(context, true);
+      return callback.call(context, Faye.URI.parse(endpoint).protocol ===
+                                    Faye.URI.parse(Faye.ENV.location).protocol);
     
     if (Faye.ENV.XMLHttpRequest) {
       var xhr = new Faye.ENV.XMLHttpRequest();
@@ -2079,13 +2119,22 @@ Faye.Transport.register('cross-origin-long-polling', Faye.Transport.CORS);
 
 
 Faye.Transport.JSONP = Faye.extend(Faye.Class(Faye.Transport, {
-  request: function(message, timeout) {
-    var params       = {message: Faye.toJSON(message)},
+  shouldFlush: function(messages) {
+    var params = {
+      message:  Faye.toJSON(messages),
+      jsonp:    '__jsonp' + Faye.Transport.JSONP._cbCount + '__'
+    };
+    var location = Faye.URI.parse(this.endpoint, params).toURL();
+    return location.length >= Faye.Transport.MAX_URL_LENGTH;
+  },
+  
+  request: function(messages, timeout) {
+    var params       = {message: Faye.toJSON(messages)},
         head         = document.getElementsByTagName('head')[0],
         script       = document.createElement('script'),
         callbackName = Faye.Transport.JSONP.getCallbackName(),
-        location     = Faye.URI.parse(this._endpoint, params),
-        retry        = this.retry(message, timeout),
+        location     = Faye.URI.parse(this.endpoint, params),
+        retry        = this.retry(messages, timeout),
         self         = this;
     
     Faye.ENV[callbackName] = function(data) {
@@ -2122,7 +2171,7 @@ Faye.Transport.JSONP = Faye.extend(Faye.Class(Faye.Transport, {
     return '__jsonp' + this._cbCount + '__';
   },
   
-  isUsable: function(endpoint, callback, context) {
+  isUsable: function(client, endpoint, callback, context) {
     callback.call(context, true);
   }
 });

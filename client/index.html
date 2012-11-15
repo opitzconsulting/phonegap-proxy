@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">	
+	<link href="bootstrap/css/bootstrap.css" rel="stylesheet">
+	<link href="bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
+
+
+</head>	
+<body>
+
+<div class="navbar navbar-fixed-top">
+
+</div>	
+
+<div class="container-fluid">
+<h1>PhoneGap Proxy</h1>
+<p>
+This proxy allows the development of a HTML5 app with PhoneGap (Apache Cordova) in a desktop browser using all the native features of cordova, like camera access, ... The html5 app will run in a desktop browser, but all native cordova features will be executed on a real mobile device, without simulation.
+</p>
+
+<p>
+<h2>List devices</h2>
+Server: <input type="text" id="server">
+<button onclick="listDevices()">List</button>
+</p>	
+
+<h2>Registered devices</h2>
+<table class="table table-striped">
+<thead>
+	<tr>
+		<th>Channel</th><th>Device name</th><th>Demo</th>
+	</th>	
+</thead>
+<tbody id="deviceListBody">
+</tbody>
+</table>
+
+
+</div>
+
+<!-- scripts go here -->
+<script type="text/javascript" src="/faye/client.js"></script>
+
+<script type="text/javascript">
+	var serverElement = document.getElementById("server");
+
+	var deviceListTemplate = function(server, deviceData) {
+		var cordovaProxyConfig = {
+			url: server,
+			channel: deviceData.channel
+		};
+		var demoClientUri = 'client.html#!'+encodeURIComponent(JSON.stringify(cordovaProxyConfig));
+
+		return '<tr><td>'+deviceData.channel+'</td>'+
+			'<td>'+deviceData.name+'</td>'+
+			'<td><a href="'+demoClientUri+'">Demo</a></td></tr>';
+	}
+
+	var socket;
+	function listDevices() {
+	    var server = serverElement.value;
+		if (socket) {
+			socket.disconnect();
+			socket = null;
+		}
+        socket = new Faye.Client(server);
+
+		var listElement = document.getElementById("deviceListBody");
+		listElement.innerHTML = '';
+
+		var result = socket.subscribe('/findDevicesResult', function(deviceData) {
+			listElement.innerHTML += deviceListTemplate(server, deviceData);
+		});
+		result.callback(function() {
+        	// Do not send the request until the result listener is installed!
+        	socket.publish('/findDevices', {});
+    	});
+	}
+
+	serverElement.value = location.protocol+'//'+location.hostname+':'+location.port+'/faye';
+</script>
+
+</body>
+</html>

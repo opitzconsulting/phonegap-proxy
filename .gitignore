@@ -1,5 +1,6 @@
 .DS_Store
 
-# Ignore target
-target
+node_modules
+
+server/assembly
 

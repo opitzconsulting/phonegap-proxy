@@ -30,35 +30,39 @@ TODOs
 Quick Start
 -------------
 
-*Configure the server*
-For node.js and ruby use (Faye)[http://faye.jcoglan.com/].
-For java, use (Cometd)[http://docs.cometd.org/reference/#java_server]
+*Start the messaging server*
 
-Please note: The server can be the server in which you are developing your app, or it can also be a separate standalone server. PhoneGap Proxy works with both.
+- execute `npm start`.
 
-*Build the app using PhoneGap Build*
+Please note: The server can be the server that also serves your app, or it can also be a separate standalone server. PhoneGap Proxy works with both. For node.js and ruby use [Faye](http://faye.jcoglan.com/). For java, use [Cometd](http://docs.cometd.org/reference/#java_server)
 
-1. Zip the directory `app/src`.
+
+*Build the server app using PhoneGap Build*
+
+1. Zip the directory `server/src`.
 2. Using [PhoneGap Build](https://build.phonegap.com/): Just upload the zip (`config.xml` is already included).
 
-*Build the app using a PhoneGap native project*
-1. Rename the `cordova-xyz.js` in the `www` folder into `cordova.js`.
-2. Delete everything in the `www` folder of the native project, except for the `cordova.js`.
-3. Copy everything from `app/src` into the `www` folder.
+*Build and run the server app using a PhoneGap native project*
+
+1. Download PhoneGap (http://phonegap.com/download)[http://phonegap.com/download]
+2. Build the native project. Execute `server/nativeproject.sh <phonegap-dir> <platform>`. This will create a native project
+   under `server/assembly/<platform>` that contains all required sources.
+3. Run the app. Execute `server/run.sh <phonegap-dir> <platform>`. This will compile and run 
+   the app in the emulator for the given platform.
+
+Note: This only works for android, ios and blackberry. For other platforms, you have to manually
+create a native phonegap project and copy the files from `server/src` in it. Also make sure that the
+whitelist of accessible servers for that platform allows any servers, as the app needs to connect
+to the messaging server (see above).
 
 *Start the demo client*
+
 1. Open the app on your device and enter the server url.
-2. Open the file `clientdemo/index.html`. 
-3. Enter the server url and click `List`. This should show a list of connected devices.
+2. Open the file `demo/index.html`. 
+3. Click `List`. This should show a list of connected devices.
 4. Click on one of the `Demo` links in the list. This should open a new page.
 5. The new page should show details about the device (name, uuid, ...)
 6. Click on the `Take a picture` button. This should take a picture in the device and show it in the browser.
-
-
-Creating a client
---------------------
-See clientdemo/democlient.html
-TODO
 
 
 How it works
@@ -67,7 +71,7 @@ The principle is simple: Install a generic app on your device, use desktop brows
 
 For this to work we use the `Bayeux` protocol (see (http://cometd.org/documentation/bayeux)[http://cometd.org/documentation/bayeux]). This provides pub/sub messaging between any connected clients, without the need of any furhter server programming. Furthermore, there are servers in java, ruby and node.js for this (see above).
 
-The client is an own build of cordova-js, see here: [https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy](https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy). This introduces the new build platform `proxy`. To generate it just call `jake` and get the file `pkg/cordova.proxy.js`. This platform inherits everything from `common`and implements the `cordova/exec` using a remote call to the device using socket.io.
+The client is an own build of cordova-js, see here: [https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy](https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy). This introduces the new build platform `proxy`. To generate it just call `jake` and get the file `pkg/cordova.proxy.js` and `lib/proxy/plugin/proxy/cordova.proxy.server.js`. This platform inherits everything from `common`and implements the `cordova/exec` using a remote call to the device using socket.io.
 
 On the device there is a special dispatching function for the `exec` calls:
 
@@ -95,12 +99,20 @@ Why not socket.io?
 
 Dependencies:
 ---------------
-- cordova 1.8
-- faye browser client (http://faye.jcoglan.com/)
+
+*Client*
+
+- cordova 2.1
+- faye browser client [http://faye.jcoglan.com/](http://faye.jcoglan.com/)
+
+*Server*
+
+- node.js / Ruby: faye server [http://faye.jcoglan.com/](http://faye.jcoglan.com/)
+- java: Cometd [http://docs.cometd.org/reference/#java_server](http://docs.cometd.org/reference/#java_server)
 
 License: 
 ------------
-Copyright 2011, Tobias Bosch (OPITZ CONSULTING GmbH)
+Copyright 2012, Tobias Bosch (OPITZ CONSULTING GmbH)
 Licensed under the MIT license.
 
 
