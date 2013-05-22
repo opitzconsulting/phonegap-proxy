@@ -18,7 +18,7 @@ Features
 - Supports iOS, Android and WP7. 
 - Supports all PhoneGap APIs and PhoneGap Events
 - Uses Cordova-js, the common javascript behind all cordova plattform implementations.
-  The proxy client is an own platform in cordova-js, see here: [https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy]
+  The proxy client is an own platform in cordova-js, see here: [https://github.com/opitzconsulting/incubator-cordova-js/tree/phonegap-proxy]
 - The app can be build using PhoneGap Build (config.xml included)
 - The server is generic and runs on multiple platform (ruby, node, java)
 
@@ -71,7 +71,7 @@ The principle is simple: Install a generic app on your device, use desktop brows
 
 For this to work we use the `Bayeux` protocol (see (http://cometd.org/documentation/bayeux)[http://cometd.org/documentation/bayeux]). This provides pub/sub messaging between any connected clients, without the need of any furhter server programming. Furthermore, there are servers in java, ruby and node.js for this (see above).
 
-The client is an own build of cordova-js, see here: [https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy](https://github.com/tigbro/incubator-cordova-js/tree/phonegap-proxy). This introduces the new build platform `proxy`. To generate it just call `jake` and get the file `pkg/cordova.proxy.js` and `lib/proxy/plugin/proxy/cordova.proxy.server.js`. This platform inherits everything from `common`and implements the `cordova/exec` using a remote call to the device using socket.io.
+The client is an own build of cordova-js, see here: [https://github.com/opitzconsulting/incubator-cordova-js/tree/phonegap-proxy](https://github.com/opitzconsulting/incubator-cordova-js/tree/phonegap-proxy). This introduces the new build platform `proxy`. To generate it just call `jake` and get the file `pkg/cordova.proxy.js` and `lib/proxy/plugin/proxy/cordova.proxy.server.js`. This platform inherits everything from `common`and implements the `cordova/exec` using a remote call to the device using socket.io.
 
 On the device there is a special dispatching function for the `exec` calls:
 
