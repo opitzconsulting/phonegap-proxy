@@ -25,7 +25,8 @@ Features
 TODOs
 -----------
 - Test against https://github.com/apache/incubator-cordova-mobile-spec
-
+- Rebase proxy plattform to https://github.com/apache/cordova-js, as 
+  incubator-cordova-js is not active any more.
 
 Quick Start
 -------------
